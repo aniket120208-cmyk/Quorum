@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_bloc.dart';
+import 'package:quorum/screens/sign_up_screen/sign_up_screen/sign_up_screen.dart';
 import '../widgets/corner_background_orb.dart';
 import '../widgets/sign_in_form.dart';
 
@@ -56,7 +57,14 @@ class SigninScreen extends StatelessWidget {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () {},
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                builder: (context) => SignUpScreen(),
+                              ),
+                            );
+                            },
                             child: const Text(
                               'Create one',
                               style: TextStyle(
