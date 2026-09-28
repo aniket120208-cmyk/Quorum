@@ -4,12 +4,14 @@ class AppUser {
     required this.name,
     required this.email,
     required this.role,
+    required this.isEmailVerified,
   });
 
   final String id;
   final String name;
   final String email;
   final String role;
+  final bool isEmailVerified;
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     return AppUser(
@@ -17,6 +19,7 @@ class AppUser {
       name: '${json['name'] ?? ''}',
       email: '${json['email'] ?? ''}',
       role: '${json['role'] ?? 'member'}',
+      isEmailVerified: json['isEmailVerified'] == true,
     );
   }
 }

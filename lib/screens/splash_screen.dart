@@ -19,20 +19,42 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _restoreSession(AuthRepository repository) async {
-    bool signedIn;
     try {
-      signedIn = await repository.restoreSession() != null;
-    } catch (_) {
-      signedIn = false;
-    }
+      final user = await repository.restoreSession();
 
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) =>
-            signedIn ? const HomeScreen() : const OnboardingScreen(),
-      ),
-    );
+      if (!mounted) return;
+
+      if (user == null || !user.isEmailVerified) {
+        await repository.logout();
+
+        if (!mounted) return;
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const OnboardingScreen(),
+          ),
+        );
+        return;
+      }
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const HomeScreen(),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      await repository.logout();
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const OnboardingScreen(),
+        ),
+      );
+    }
   }
 
   @override
@@ -42,12 +64,18 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset('lib/assets/logo.jpeg', height: 140, width: 140),
+            Image.asset(
+              'lib/assets/logo.jpeg',
+              height: 140,
+              width: 140,
+            ),
             const SizedBox(height: 24),
             const SizedBox(
               width: 24,
               height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+              ),
             ),
           ],
         ),

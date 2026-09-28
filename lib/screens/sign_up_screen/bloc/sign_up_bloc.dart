@@ -1,13 +1,16 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/api/api_exception.dart';
+import 'package:quorum/utils/validators.dart';
+import 'package:quorum/repositories/auth_repository.dart';
 import 'sign_up_event.dart';
 import 'sign_up_state.dart';
 
 class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
-  static final RegExp _emailRegExp = RegExp(
-    r'^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+',
-  );
+  final AuthRepository _authRepository;
 
-  SignUpBloc() : super(const SignUpState()) {
+  SignUpBloc({required AuthRepository authRepository})
+      : _authRepository = authRepository,
+        super(const SignUpState()) {
     on<FullNameChanged>((event, emit) {
       final name = event.fullName.trim();
 
@@ -16,6 +19,7 @@ class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
           fullName: event.fullName,
           nameError: name.isEmpty ? 'Please enter your name.' : null,
           clearNameError: name.isNotEmpty,
+          clearErrorMessage: true,
         ),
       );
     });
@@ -24,7 +28,7 @@ class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
       final email = event.email.trim();
       String? error;
 
-      if (email.isNotEmpty && !_emailRegExp.hasMatch(email)) {
+      if (email.isNotEmpty && !isValidEmail(email)) {
         error = 'Please enter a valid email address.';
       }
 
@@ -33,6 +37,7 @@ class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
           email: event.email,
           emailError: error,
           clearEmailError: error == null,
+          clearErrorMessage: true,
         ),
       );
     });
@@ -44,9 +49,9 @@ class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
       emit(
         state.copyWith(
           password: event.password,
-          passwordError:
-              isMismatch ? 'The password does not match.' : null,
+          passwordError: isMismatch ? 'The password does not match.' : null,
           clearPasswordError: !isMismatch,
+          clearErrorMessage: true,
         ),
       );
     });
@@ -57,30 +62,26 @@ class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
       emit(
         state.copyWith(
           confirmPassword: event.confirmPassword,
-          passwordError:
-              isMismatch ? 'The password does not match.' : null,
+          passwordError: isMismatch ? 'The password does not match.' : null,
           clearPasswordError: !isMismatch,
+          clearErrorMessage: true,
         ),
       );
     });
 
     on<TogglePasswordVisibility>((event, emit) {
-      emit(
-        state.copyWith(
-          obscurePassword: !state.obscurePassword,
-        ),
-      );
+      emit(state.copyWith(obscurePassword: !state.obscurePassword));
     });
 
     on<ToggleConfirmPasswordVisibility>((event, emit) {
       emit(
-        state.copyWith(
-          obscureConfirmPassword: !state.obscureConfirmPassword,
-        ),
+        state.copyWith(obscureConfirmPassword: !state.obscureConfirmPassword),
       );
     });
 
     on<SignUpSubmitted>((event, emit) async {
+      if (state.status == SignUpStatus.submitting) return;
+
       final name = state.fullName.trim();
       final email = state.email.trim();
 
@@ -92,28 +93,27 @@ class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
         nameErr = 'Please enter your name.';
       }
 
-      if (email.isEmpty || !_emailRegExp.hasMatch(email)) {
+      if (!isValidEmail(email)) {
         emailErr = 'Please enter a valid email address.';
       }
 
-      if (state.password != state.confirmPassword) {
+      if (state.password.isEmpty) {
+        passwordErr = 'Please enter a password.';
+      } else if (state.password != state.confirmPassword) {
         passwordErr = 'The password does not match.';
       }
 
-      if (nameErr != null ||
-          emailErr != null ||
-          passwordErr != null) {
+      if (nameErr != null || emailErr != null || passwordErr != null) {
         emit(
           state.copyWith(
             nameError: nameErr,
             emailError: emailErr,
             passwordError: passwordErr,
+            clearNameError: nameErr == null,
+            clearEmailError: emailErr == null,
+            clearPasswordError: passwordErr == null,
           ),
         );
-        return;
-      }
-
-      if (state.password.isEmpty) {
         return;
       }
 
@@ -123,18 +123,31 @@ class SignUpBloc extends Bloc<SignUpEvent, SignUpState> {
           clearNameError: true,
           clearEmailError: true,
           clearPasswordError: true,
+          clearErrorMessage: true,
         ),
       );
 
-      await Future.delayed(
-        const Duration(seconds: 1),
-      );
-
-      emit(
-        state.copyWith(
-          status: SignUpStatus.success,
-        ),
-      );
+      try {
+        await _authRepository.register(
+          name: name,
+          email: email,
+          password: state.password,
+        );
+        emit(state.copyWith(status: SignUpStatus.success));
+      } on ApiException catch (e) {
+        if (e.statusCode == 409) {
+          emit(state.copyWith(status: SignUpStatus.failure, emailError: e.message));
+        } else {
+          emit(state.copyWith(status: SignUpStatus.failure, errorMessage: e.message));
+        }
+      } catch (e) {
+        emit(
+          state.copyWith(
+            status: SignUpStatus.failure,
+            errorMessage: messageFromError(e),
+          ),
+        );
+      }
     });
   }
 }

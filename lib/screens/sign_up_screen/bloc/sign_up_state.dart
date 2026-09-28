@@ -17,6 +17,7 @@ class SignUpState extends Equatable {
   final String? nameError;
   final String? emailError;
   final String? passwordError;
+  final String? errorMessage;
   final SignUpStatus status;
 
   const SignUpState({
@@ -29,6 +30,7 @@ class SignUpState extends Equatable {
     this.nameError,
     this.emailError,
     this.passwordError,
+    this.errorMessage,
     this.status = SignUpStatus.initial,
   });
 
@@ -42,9 +44,11 @@ class SignUpState extends Equatable {
     String? nameError,
     String? emailError,
     String? passwordError,
+    String? errorMessage,
     bool clearNameError = false,
     bool clearEmailError = false,
     bool clearPasswordError = false,
+    bool clearErrorMessage = false,
     SignUpStatus? status,
   }) {
     return SignUpState(
@@ -64,6 +68,9 @@ class SignUpState extends Equatable {
           clearPasswordError
               ? null
               : (passwordError ?? this.passwordError),
+      errorMessage: clearErrorMessage
+          ? null
+          : (errorMessage ?? this.errorMessage),
       status: status ?? this.status,
     );
   }
@@ -79,6 +86,7 @@ class SignUpState extends Equatable {
         nameError,
         emailError,
         passwordError,
+        errorMessage,
         status,
       ];
 }

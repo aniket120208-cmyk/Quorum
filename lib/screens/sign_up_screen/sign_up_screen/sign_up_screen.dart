@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/email_verification_screen/email_verification_screen.dart';
 import 'package:quorum/screens/sign_up_screen/bloc/sign_up_bloc.dart';
 import 'package:quorum/screens/sign_up_screen/bloc/sign_up_event.dart';
@@ -25,7 +26,8 @@ class SignUpScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => SignUpBloc(),
+      create: (context) =>
+          SignUpBloc(authRepository: context.read<AuthRepository>()),
       child: Scaffold(
         backgroundColor: darkBg,
         body: Stack(
@@ -119,7 +121,18 @@ class SignUpScreen extends StatelessWidget {
           width: 1.2,
         ),
       ),
-      child: BlocBuilder<SignUpBloc, SignUpState>(
+      child: BlocConsumer<SignUpBloc, SignUpState>(
+        listenWhen: (previous, current) =>
+            previous.status != SignUpStatus.success &&
+            current.status == SignUpStatus.success,
+        listener: (context, state) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EmailVerificationScreen(email: state.email.trim()),
+            ),
+          );
+        },
         builder: (context, state) {
           final bloc = context.read<SignUpBloc>();
           return Column(
@@ -202,6 +215,17 @@ class SignUpScreen extends StatelessWidget {
                   ),
                 ),
               ],
+              if (state.errorMessage != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  state.errorMessage!,
+                  style: const TextStyle(
+                    color: errorRed,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -217,16 +241,7 @@ class SignUpScreen extends StatelessWidget {
                   ),
                   onPressed: state.status == SignUpStatus.submitting
                       ? null
-                      : () {
-                              Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                              builder: (context) => EmailVerificationScreen(
-                              email: state.email,
-                              ),
-                            ),
-                          );
-                        },
+                      : () => bloc.add(SignUpSubmitted()),
                   child: state.status == SignUpStatus.submitting
                       ? const SizedBox(
                           width: 22,

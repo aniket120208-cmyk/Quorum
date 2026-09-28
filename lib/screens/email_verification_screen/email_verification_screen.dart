@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/email_verification_screen/bloc/email_verification_bloc.dart';
 import 'package:quorum/screens/email_verification_screen/bloc/email_verification_event.dart';
 import 'package:quorum/screens/email_verification_screen/bloc/email_verification_state.dart';
+import 'package:quorum/screens/home_screen.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   final String email;
-  const EmailVerificationScreen({super.key,required this.email,});
+  const EmailVerificationScreen({super.key, required this.email,});
   @override
   State<EmailVerificationScreen> createState() =>
       _EmailVerificationScreenState();
@@ -43,7 +45,9 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => EmailVerificationBloc(),
+      create: (context) => EmailVerificationBloc(
+        authRepository: context.read<AuthRepository>(),
+      ),
       child: Scaffold(
         backgroundColor: darkBg,
         body: Stack(
@@ -154,7 +158,20 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cardBorderColor, width: 1.2),
       ),
-      child: BlocBuilder<EmailVerificationBloc, EmailVerificationState>(
+      child: BlocConsumer<EmailVerificationBloc, EmailVerificationState>(
+        listenWhen: (previous, current) =>
+            previous.status != OtpStatus.success &&
+            current.status == OtpStatus.success,
+        listener: (context, state) {
+          Future.delayed(const Duration(milliseconds: 900), () {
+            if (!mounted) return;
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (route) => false,
+            );
+          });
+        },
         builder: (context, state) {
           final bloc = context.read<EmailVerificationBloc>();
           final isSuccess = state.status == OtpStatus.success;

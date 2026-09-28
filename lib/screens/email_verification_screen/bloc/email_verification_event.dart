@@ -17,6 +17,8 @@ class OtpDigitChanged extends EmailVerificationEvent {
   List<Object?> get props => [index, digit];
 }
 
+class SendOtpRequested extends EmailVerificationEvent {}
+
 class VerifyOtpSubmitted extends EmailVerificationEvent {}
 
 class ResendOtpSubmitted extends EmailVerificationEvent {}
