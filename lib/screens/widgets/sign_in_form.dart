@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/screens/forgot_password_screen/forgot_password_screen.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_bloc.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_event.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_state.dart';
@@ -137,7 +138,16 @@ class LoginFormCard extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                      builder: (context) => ForgotPasswordScreen(
+                        email: state.email,
+                      ),
+                      ),
+                    );
+                  },
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.zero,
                     minimumSize: Size.zero,

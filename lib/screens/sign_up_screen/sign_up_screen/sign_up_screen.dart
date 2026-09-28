@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/screens/email_verification_screen/email_verification_screen.dart';
 import 'package:quorum/screens/sign_up_screen/bloc/sign_up_bloc.dart';
 import 'package:quorum/screens/sign_up_screen/bloc/sign_up_event.dart';
 import 'package:quorum/screens/sign_up_screen/bloc/sign_up_state.dart';
@@ -216,7 +217,16 @@ class SignUpScreen extends StatelessWidget {
                   ),
                   onPressed: state.status == SignUpStatus.submitting
                       ? null
-                      : () => bloc.add(SignUpSubmitted()),
+                      : () {
+                              Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                              builder: (context) => EmailVerificationScreen(
+                              email: state.email,
+                              ),
+                            ),
+                          );
+                        },
                   child: state.status == SignUpStatus.submitting
                       ? const SizedBox(
                           width: 22,
