@@ -1,9 +1,16 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/api/api_exception.dart';
+import 'package:quorum/utils/validators.dart';
+import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_event.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_state.dart';
 
 class LoginBloc extends Bloc<LoginEvent, LoginState> {
-  LoginBloc() : super(const LoginState()) {
+  final AuthRepository _authRepository;
+
+  LoginBloc({required AuthRepository authRepository})
+      : _authRepository = authRepository,
+        super(const LoginState()) {
     on<EmailChanged>((event, emit) {
       emit(state.copyWith(
         email: event.email,
@@ -24,12 +31,9 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
     });
 
     on<SubmitLogin>((event, emit) async {
-      if (!state.isValid) return;
+      if (!state.isValid || state.isLoading) return;
 
-      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-      final isValidEmail = emailRegex.hasMatch(state.email.trim());
-
-      if (!isValidEmail) {
+      if (!isValidEmail(state.email)) {
         emit(state.copyWith(emailError: () => 'Invalid email address'));
         return;
       }
@@ -41,18 +45,15 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
       ));
 
       try {
-        await Future.delayed(const Duration(seconds: 1));
-
-        const loginSucceeded = false;
-        if (!loginSucceeded) {
-          throw Exception('Invalid email or password');
-        }
-
-        emit(state.copyWith(isLoading: false));
+        await _authRepository.login(
+          email: state.email,
+          password: state.password,
+        );
+        emit(state.copyWith(isLoading: false, isSuccess: true));
       } catch (e) {
         emit(state.copyWith(
           isLoading: false,
-          errorMessage: () => e.toString().replaceFirst('Exception: ', ''),
+          errorMessage: () => messageFromError(e),
         ));
       }
     });

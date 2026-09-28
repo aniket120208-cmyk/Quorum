@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/screens/forgot_password_screen/forgot_password_screen.dart';
+import 'package:quorum/screens/home_screen.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_bloc.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_event.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_state.dart';
@@ -22,7 +23,16 @@ class LoginFormCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color.fromARGB(98, 255, 255, 255), width: 1.2),
       ),
-      child: BlocBuilder<LoginBloc, LoginState>(
+      child: BlocConsumer<LoginBloc, LoginState>(
+        listenWhen: (previous, current) =>
+            !previous.isSuccess && current.isSuccess,
+        listener: (context, state) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            (route) => false,
+          );
+        },
         builder: (context, state) {
           final hasError = state.emailError != null;
           return Column(
@@ -162,6 +172,17 @@ class LoginFormCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (state.errorMessage != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  state.errorMessage!,
+                  style: const TextStyle(
+                    color: errorRed,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
