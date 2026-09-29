@@ -52,7 +52,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         backgroundColor: darkBg,
         body: Stack(
           children: [
-            CornerBackgroundOrb(backgroundColor: darkBg),
+            const CornerBackgroundOrb.topRight(backgroundColor: darkBg),
+            const CornerBackgroundOrb.bottomLeft(backgroundColor: darkBg),
             SafeArea(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),

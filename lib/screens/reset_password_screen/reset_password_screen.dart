@@ -33,7 +33,8 @@ class ResetPasswordScreen extends StatelessWidget {
         backgroundColor: darkBg,
         body: Stack(
           children: [
-            const CornerBackgroundOrb(backgroundColor: darkBg),
+            const CornerBackgroundOrb.topRight(backgroundColor: darkBg),
+            const CornerBackgroundOrb.bottomLeft(backgroundColor: darkBg),
             SafeArea(
               child: SingleChildScrollView(
                 padding:

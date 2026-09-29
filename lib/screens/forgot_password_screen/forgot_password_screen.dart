@@ -61,7 +61,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         backgroundColor: darkBg,
         body: Stack(
           children: [
-            CornerBackgroundOrb(backgroundColor: darkBg),
+            const CornerBackgroundOrb.topRight(backgroundColor: darkBg),
+            const CornerBackgroundOrb.bottomLeft(backgroundColor: darkBg),
             if (widget.backgroundCircle != null)
               widget.backgroundCircle!,
             SafeArea(
