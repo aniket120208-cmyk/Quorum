@@ -6,6 +6,7 @@ import 'package:quorum/screens/sign_up_screen/bloc/sign_up_bloc.dart';
 import 'package:quorum/screens/sign_up_screen/bloc/sign_up_event.dart';
 import 'package:quorum/screens/sign_up_screen/bloc/sign_up_state.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
+import 'package:quorum/utils/validators.dart';
 
 class SignUpScreen extends StatelessWidget {
   final Widget? backgroundCircle;
@@ -22,6 +23,7 @@ class SignUpScreen extends StatelessWidget {
   static const Color textMuted = Color(0xFF9CA3AF);
   static const Color primaryBlue = Color(0xFF4743EB);
   static const Color errorRed = Color(0xFFEF4444);
+  static const Color successGreen = Color(0xFF22C55E);
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +119,7 @@ class SignUpScreen extends StatelessWidget {
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Color.fromARGB(98, 255, 255, 255),
+          color: const Color.fromARGB(98, 255, 255, 255),
           width: 1.2,
         ),
       ),
@@ -148,14 +150,7 @@ class SignUpScreen extends StatelessWidget {
               ),
               if (state.nameError != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  state.nameError!,
-                  style: const TextStyle(
-                    color: errorRed,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                _buildErrorText(state.nameError!),
               ],
               const SizedBox(height: 18),
               _buildFieldLabel('Work email'),
@@ -169,14 +164,7 @@ class SignUpScreen extends StatelessWidget {
               ),
               if (state.emailError != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  state.emailError!,
-                  style: const TextStyle(
-                    color: errorRed,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                _buildErrorText(state.emailError!),
               ],
               const SizedBox(height: 18),
               _buildFieldLabel('Password'),
@@ -186,8 +174,8 @@ class SignUpScreen extends StatelessWidget {
                 prefixIcon: Icons.lock_outline_rounded,
                 isPassword: true,
                 obscureText: state.obscurePassword,
-                onToggleVisibility: () =>
-                    bloc.add(TogglePasswordVisibility()),
+                hasError: state.passwordFormatError != null,
+                onToggleVisibility: () => bloc.add(TogglePasswordVisibility()),
                 onChanged: (val) => bloc.add(PasswordChanged(val)),
               ),
               const SizedBox(height: 18),
@@ -201,30 +189,15 @@ class SignUpScreen extends StatelessWidget {
                 hasError: state.passwordError != null,
                 onToggleVisibility: () =>
                     bloc.add(ToggleConfirmPasswordVisibility()),
-                onChanged: (val) =>
-                    bloc.add(ConfirmPasswordChanged(val)),
+                onChanged: (val) => bloc.add(ConfirmPasswordChanged(val)),
               ),
               if (state.passwordError != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  state.passwordError!,
-                  style: const TextStyle(
-                    color: errorRed,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                _buildErrorText(state.passwordError!),
               ],
               if (state.errorMessage != null) ...[
                 const SizedBox(height: 14),
-                Text(
-                  state.errorMessage!,
-                  style: const TextStyle(
-                    color: errorRed,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                _buildErrorText(state.errorMessage!),
               ],
               const SizedBox(height: 24),
               SizedBox(
@@ -260,9 +233,71 @@ class SignUpScreen extends StatelessWidget {
                         ),
                 ),
               ),
+              const SizedBox(height: 12),
+              _buildPasswordRules(state),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildPasswordRules(SignUpState state) {
+    final p = state.password;
+    final hasError = state.passwordFormatError != null;
+
+    Widget rule(String text, bool met) {
+      final color = met ? successGreen : (hasError ? errorRed : textMuted);
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(
+          children: [
+            Icon(
+              met ? Icons.check_circle_rounded : Icons.circle_outlined,
+              size: 15,
+              color: color,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(color: color, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Password must include the following:',
+          style: TextStyle(
+            color: textLight,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        rule('8 characters minimum', PasswordRules.hasMinLength(p)),
+        rule('At least one uppercase letter', PasswordRules.hasUppercase(p)),
+        rule('At least one lowercase letter', PasswordRules.hasLowercase(p)),
+        rule(
+          'At least one special character (e.g. !@\$%^&*)',
+          PasswordRules.hasSpecial(p),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorText(String message) {
+    return Text(
+      message,
+      style: const TextStyle(
+        color: errorRed,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
       ),
     );
   }
@@ -292,10 +327,12 @@ class SignUpScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: inputBg,
         borderRadius: BorderRadius.circular(10),
-        border: hasError? Border.all(
+        border: hasError
+            ? Border.all(
                 color: errorRed,
                 width: 1.2,
-              ): null,
+              )
+            : null,
       ),
       child: TextField(
         obscureText: obscureText,
@@ -330,7 +367,10 @@ class SignUpScreen extends StatelessWidget {
                 )
               : null,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14,),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
         ),
       ),
     );

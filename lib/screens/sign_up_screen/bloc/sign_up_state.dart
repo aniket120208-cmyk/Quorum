@@ -16,6 +16,7 @@ class SignUpState extends Equatable {
   final bool obscureConfirmPassword;
   final String? nameError;
   final String? emailError;
+  final String? passwordFormatError;
   final String? passwordError;
   final String? errorMessage;
   final SignUpStatus status;
@@ -29,6 +30,7 @@ class SignUpState extends Equatable {
     this.obscureConfirmPassword = true,
     this.nameError,
     this.emailError,
+    this.passwordFormatError,
     this.passwordError,
     this.errorMessage,
     this.status = SignUpStatus.initial,
@@ -43,10 +45,12 @@ class SignUpState extends Equatable {
     bool? obscureConfirmPassword,
     String? nameError,
     String? emailError,
+    String? passwordFormatError,
     String? passwordError,
     String? errorMessage,
     bool clearNameError = false,
     bool clearEmailError = false,
+    bool clearPasswordFormatError = false,
     bool clearPasswordError = false,
     bool clearErrorMessage = false,
     SignUpStatus? status,
@@ -56,21 +60,18 @@ class SignUpState extends Equatable {
       email: email ?? this.email,
       password: password ?? this.password,
       confirmPassword: confirmPassword ?? this.confirmPassword,
-      obscurePassword:
-          obscurePassword ?? this.obscurePassword,
+      obscurePassword: obscurePassword ?? this.obscurePassword,
       obscureConfirmPassword:
           obscureConfirmPassword ?? this.obscureConfirmPassword,
-      nameError:
-          clearNameError ? null : (nameError ?? this.nameError),
-      emailError:
-          clearEmailError ? null : (emailError ?? this.emailError),
-      passwordError:
-          clearPasswordError
-              ? null
-              : (passwordError ?? this.passwordError),
-      errorMessage: clearErrorMessage
+      nameError: clearNameError ? null : (nameError ?? this.nameError),
+      emailError: clearEmailError ? null : (emailError ?? this.emailError),
+      passwordFormatError: clearPasswordFormatError
           ? null
-          : (errorMessage ?? this.errorMessage),
+          : (passwordFormatError ?? this.passwordFormatError),
+      passwordError:
+          clearPasswordError ? null : (passwordError ?? this.passwordError),
+      errorMessage:
+          clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
       status: status ?? this.status,
     );
   }
@@ -85,6 +86,7 @@ class SignUpState extends Equatable {
         obscureConfirmPassword,
         nameError,
         emailError,
+        passwordFormatError,
         passwordError,
         errorMessage,
         status,
