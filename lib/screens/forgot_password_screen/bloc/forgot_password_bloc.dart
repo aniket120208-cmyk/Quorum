@@ -1,6 +1,8 @@
 import 'dart:async';
-
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/api/api_exception.dart';
+import 'package:quorum/repositories/auth_repository.dart';
+
 import 'forgot_password_event.dart';
 import 'forgot_password_state.dart';
 
@@ -10,10 +12,14 @@ class ForgotPasswordBloc
     r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
   );
 
+  final AuthRepository _authRepository;
   StreamSubscription<int>? _timerSubscription;
 
-  ForgotPasswordBloc({String initialEmail = ''})
-      : super(
+  ForgotPasswordBloc({
+    required AuthRepository authRepository,
+    String initialEmail = '',
+  })  : _authRepository = authRepository,
+        super(
           ForgotPasswordState(
             email: initialEmail,
           ),
@@ -47,6 +53,8 @@ class ForgotPasswordBloc
     });
 
     on<SendResetLinkSubmitted>((event, emit) async {
+      if (state.status == ForgotPasswordStatus.submitting) return;
+
       final email = state.email.trim();
 
       if (email.isEmpty || !_emailRegExp.hasMatch(email)) {
@@ -65,15 +73,18 @@ class ForgotPasswordBloc
         ),
       );
 
-      await Future.delayed(
-        const Duration(seconds: 1),
-      );
-
-      emit(
-        state.copyWith(
-          status: ForgotPasswordStatus.success,
-        ),
-      );
+      try {
+        await _authRepository.forgotPassword(email);
+        _startCountdown();
+        emit(state.copyWith(status: ForgotPasswordStatus.success));
+      } catch (e) {
+        emit(
+          state.copyWith(
+            status: ForgotPasswordStatus.failure,
+            emailError: messageFromError(e),
+          ),
+        );
+      }
     });
 
     on<ResendLinkSubmitted>((event, emit) async {
@@ -92,9 +103,11 @@ class ForgotPasswordBloc
 
       _startCountdown();
 
-      await Future.delayed(
-        const Duration(milliseconds: 500),
-      );
+      try {
+        await _authRepository.forgotPassword(email);
+      } catch (e) {
+        emit(state.copyWith(emailError: messageFromError(e)));
+      }
     });
   }
 

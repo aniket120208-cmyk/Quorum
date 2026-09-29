@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:quorum/screens/email_verification_screen/email_verification_screen.dart';
+import 'package:quorum/repositories/auth_repository.dart';
+import 'package:quorum/screens/reset_password_screen/reset_password_screen.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
 
 import 'bloc/forgot_password_bloc.dart';
@@ -10,7 +11,13 @@ import 'bloc/forgot_password_state.dart';
 class ForgotPasswordScreen extends StatefulWidget {
   final Widget? backgroundCircle;
   final String email;
-  const ForgotPasswordScreen({super.key,this.backgroundCircle,this.email = '',});
+
+  const ForgotPasswordScreen({
+    super.key,
+    this.backgroundCircle,
+    this.email = '',
+  });
+
   @override
   State<ForgotPasswordScreen> createState() =>
       _ForgotPasswordScreenState();
@@ -18,6 +25,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   late final TextEditingController _emailController;
+
   static const Color darkBg = Color(0xFF0D0F12);
   static const Color cardBorderColor = Color.fromARGB(98, 255, 255, 255);
   static const Color inputBg = Color(0xFF2A2D34);
@@ -30,6 +38,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void initState() {
     super.initState();
+
     _emailController = TextEditingController(
       text: widget.email,
     );
@@ -44,7 +53,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => ForgotPasswordBloc(
+      create: (context) => ForgotPasswordBloc(
+        authRepository: context.read<AuthRepository>(),
         initialEmail: widget.email,
       ),
       child: Scaffold(
@@ -180,7 +190,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           width: 1.2,
         ),
       ),
-      child: BlocBuilder<ForgotPasswordBloc, ForgotPasswordState>(
+      child: BlocConsumer<ForgotPasswordBloc, ForgotPasswordState>(
+        listenWhen: (previous, current) =>
+            previous.status != ForgotPasswordStatus.success &&
+            current.status == ForgotPasswordStatus.success,
+        listener: (context, state) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ResetPasswordScreen(email: state.email.trim()),
+            ),
+          );
+        },
         builder: (context, state) {
           final bloc = context.read<ForgotPasswordBloc>();
 
@@ -300,16 +321,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       state.status ==
                               ForgotPasswordStatus.submitting
                           ? null
-                          : () {
-                              Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                              builder: (context) => EmailVerificationScreen(
-                              email: state.email,
-                              ),
-                            ),
-                          );
-                        },
+                          : () => bloc.add(SendResetLinkSubmitted()),
                   child: state.status ==
                           ForgotPasswordStatus.submitting
                       ? const SizedBox(
