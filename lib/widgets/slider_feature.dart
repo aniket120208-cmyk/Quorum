@@ -19,7 +19,7 @@ class _FeatureSliderState extends State<FeatureSlider> {
   final List<Map<String, dynamic>> features = [
     {
       'title': 'File Sharing',
-      'subtitle': 'Access, share, collaboration',
+      'subtitle': 'Access, share, collab',
       'icon': Icons.folder_outlined,
     },
     {
