@@ -3,7 +3,7 @@ class ApiConfig {
 
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue:'http://quorum-backend-env.eba-2vd8rmzr.ap-south-1.elasticbeanstalk.com',);
+    defaultValue:'https://api.newquorum.me/',);
 
   static const String platformHeader = 'X-Client-Platform';
   static const String platformValue = 'mobile';
