@@ -28,8 +28,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   static const Color successGreen = Color(0xFF10B981);
 
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
-  final List<TextEditingController> _controllers =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
 
   @override
   void dispose() {
@@ -51,12 +50,20 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       child: Scaffold(
         backgroundColor: darkBg,
         body: Stack(
+          fit: StackFit.expand,
           children: [
-            const CornerBackgroundOrb.topRight(backgroundColor: darkBg),
-            const CornerBackgroundOrb.bottomLeft(backgroundColor: darkBg),
+            const CornerBackgroundOrb.topRight(
+              backgroundColor: darkBg,
+            ),
+            const CornerBackgroundOrb.bottomLeft(
+              backgroundColor: darkBg,
+            ),
             SafeArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -91,10 +98,13 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       ),
                     ),
                     const SizedBox(height: 36),
-                    Center(child: _buildMailIllustration()),
+
+                    Center(
+                      child: _buildMailIllustration(),
+                    ),
+
                     const SizedBox(height: 36),
                     _buildOtpCard(),
-                    const SizedBox(height: 260,)
                   ],
                 ),
               ),
@@ -125,9 +135,18 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  Container(height: 2.5, color: const Color(0xFFCBD5E1)),
-                  Container(height: 2.5, color: const Color(0xFFCBD5E1)),
-                  Container(height: 2.5, color: const Color(0xFFCBD5E1)),
+                  Container(
+                    height: 2.5,
+                    color: const Color(0xFFCBD5E1),
+                  ),
+                  Container(
+                    height: 2.5,
+                    color: const Color(0xFFCBD5E1),
+                  ),
+                  Container(
+                    height: 2.5,
+                    color: const Color(0xFFCBD5E1),
+                  ),
                 ],
               ),
             ),
@@ -153,64 +172,154 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
 
   Widget _buildOtpCard() {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cardBorderColor, width: 1.2),
+        border: Border.all(
+          color: cardBorderColor,
+          width: 1.2,
+        ),
       ),
-      child: BlocConsumer<EmailVerificationBloc, EmailVerificationState>(
+      child: BlocConsumer<EmailVerificationBloc,
+          EmailVerificationState>(
         listenWhen: (previous, current) =>
             previous.status != OtpStatus.success &&
             current.status == OtpStatus.success,
         listener: (context, state) {
-          Future.delayed(const Duration(milliseconds: 900), () {
-            if (!mounted) return;
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-              (route) => false,
-            );
-          });
+          Future.delayed(
+            const Duration(milliseconds: 900),
+            () {
+              if (!mounted) return;
+
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const HomeScreen(),
+                ),
+                (route) => false,
+              );
+            },
+          );
         },
         builder: (context, state) {
-          final bloc = context.read<EmailVerificationBloc>();
-          final isSuccess = state.status == OtpStatus.success;
-          final isFailure = state.status == OtpStatus.failure;
+          final bloc =
+              context.read<EmailVerificationBloc>();
 
-          Color borderColor = const Color.fromARGB(98, 255, 255, 255);
-          if (isSuccess) borderColor = successGreen;
-          if (isFailure) borderColor = errorRed;
+          final isSuccess =
+              state.status == OtpStatus.success;
+
+          final isFailure =
+              state.status == OtpStatus.failure;
+
+          Color borderColor = cardBorderColor;
+
+          if (isSuccess) {
+            borderColor = successGreen;
+          }
+
+          if (isFailure) {
+            borderColor = errorRed;
+          }
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(6, (index) {
-                  return _buildOtpBox(
-                    index: index,
-                    borderColor: borderColor,
-                    isSuccess: isSuccess,
-                    isFailure: isFailure,
-                    onChanged: (val) {
-                      bloc.add(OtpDigitChanged(index: index, digit: val));
-                      if (val.isNotEmpty && index < 5) {
-                        _focusNodes[index + 1].requestFocus();
-                      }
-                      if (val.isEmpty && index > 0) {
-                        _focusNodes[index - 1].requestFocus();
-                      }
-                    },
-                  );
-                }),
+                children: [
+                  for (int index = 0; index < 6; index++) ...[
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: _buildOtpBox(
+                          index: index,
+                          borderColor: borderColor,
+                          isSuccess: isSuccess,
+                          isFailure: isFailure,
+
+                          onChanged: (val) {
+                            if (val.length > 1) {
+                              final digits =
+                                  val.replaceAll(
+                                RegExp(r'[^0-9]'),
+                                '',
+                              );
+
+                              for (
+                                int i = 0;
+                                i < digits.length &&
+                                    index + i < 6;
+                                i++
+                              ) {
+                                final boxIndex =
+                                    index + i;
+
+                                final digit =
+                                    digits[i];
+
+                                _controllers[boxIndex]
+                                    .text = digit;
+
+                                bloc.add(
+                                  OtpDigitChanged(
+                                    index: boxIndex,
+                                    digit: digit,
+                                  ),
+                                );
+                              }
+
+                              final nextIndex =
+                                  index + digits.length;
+
+                              if (nextIndex < 6) {
+                                _focusNodes[nextIndex]
+                                    .requestFocus();
+                              } else {
+                                _focusNodes[5]
+                                    .requestFocus();
+                              }
+
+                              return;
+                            }
+
+                            bloc.add(
+                              OtpDigitChanged(
+                                index: index,
+                                digit: val,
+                              ),
+                            );
+
+                            if (val.isNotEmpty &&
+                                index < 5) {
+                              _focusNodes[index + 1]
+                                  .requestFocus();
+                            }
+
+                            if (val.isEmpty &&
+                                index > 0) {
+                              _focusNodes[index - 1]
+                                  .requestFocus();
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+
+                    if (index < 5)
+                      const SizedBox(width: 8),
+                  ],
+                ],
               ),
+
               if (state.message != null) ...[
                 const SizedBox(height: 10),
                 Text(
                   state.message!,
                   style: TextStyle(
-                    color: isSuccess ? successGreen : errorRed,
+                    color: isSuccess
+                        ? successGreen
+                        : errorRed,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),
@@ -219,22 +328,36 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               if (!isSuccess) ...[
                 const SizedBox(height: 22),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      "Didn't receive the code?",
-                      style: TextStyle(color: textLight, fontSize: 13),
+                    const Flexible(
+                      child: Text(
+                        "Didn't receive the code?",
+                        style: TextStyle(
+                          color: textLight,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
+
+                    const SizedBox(width: 8),
+
                     GestureDetector(
                       onTap: state.canResend
-                          ? () => bloc.add(ResendOtpSubmitted())
+                          ? () => bloc.add(
+                                ResendOtpSubmitted(),
+                              )
                           : null,
+
                       child: Text(
                         state.canResend
                             ? 'Resend'
                             : 'Resend (${state.resendCountdown}s)',
                         style: TextStyle(
-                          color: state.canResend ? linkBlue : textMuted,
+                          color: state.canResend
+                              ? linkBlue
+                              : textMuted,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
@@ -252,28 +375,39 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: state.status == OtpStatus.submitting
-                        ? null
-                        : () => bloc.add(VerifyOtpSubmitted()),
-                    child: state.status == OtpStatus.submitting
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Verify',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+
+                    onPressed:
+                        state.status ==
+                                OtpStatus.submitting
+                            ? null
+                            : () => bloc.add(
+                                  VerifyOtpSubmitted(),
+                                ),
+
+                    child:
+                        state.status ==
+                                OtpStatus.submitting
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Verify',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight:
+                                      FontWeight.w600,
+                                ),
+                              ),
                   ),
                 ),
               ],
@@ -292,12 +426,18 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     required ValueChanged<String> onChanged,
   }) {
     Color textColor = Colors.white;
-    if (isSuccess) textColor = successGreen;
-    if (isFailure) textColor = errorRed;
+
+    if (isSuccess) {
+      textColor = successGreen;
+    }
+
+    if (isFailure) {
+      textColor = errorRed;
+    }
 
     return Container(
-      width: 44,
       height: 48,
+      width: double.infinity,
       decoration: BoxDecoration(
         color: inputBg,
         borderRadius: BorderRadius.circular(8),
@@ -317,9 +457,12 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
-          maxLength: 1,
           cursorColor: Colors.white,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+          ],
+
           decoration: InputDecoration(
             hintText: 'X',
             hintStyle: TextStyle(
@@ -351,7 +494,10 @@ class _MailEnvelopePainter extends CustomPainter {
 
     final path = Path()
       ..moveTo(0, 0)
-      ..lineTo(size.width / 2, size.height * 0.55)
+      ..lineTo(
+        size.width / 2,
+        size.height * 0.55,
+      )
       ..lineTo(size.width, 0)
       ..close();
 
@@ -359,5 +505,9 @@ class _MailEnvelopePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(
+    covariant CustomPainter oldDelegate,
+  ) {
+    return false;
+  }
 }
