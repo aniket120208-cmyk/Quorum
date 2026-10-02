@@ -23,7 +23,8 @@ class _OtpInputState extends State<OtpInput> {
 
   final List<TextEditingController> _controllers =
       List.generate(_length, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(_length, (_) => FocusNode());
+  final List<FocusNode> _focusNodes =
+      List.generate(_length, (_) => FocusNode());
 
   @override
   void dispose() {
@@ -40,7 +41,33 @@ class _OtpInputState extends State<OtpInput> {
     widget.onChanged(_controllers.map((c) => c.text).join());
   }
 
+  void _setOtp(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+
+    if (digits.isEmpty) return;
+
+    final otp = digits.substring(
+      0,
+      digits.length > _length ? _length : digits.length,
+    );
+
+    for (int i = 0; i < _length; i++) {
+      _controllers[i].text = i < otp.length ? otp[i] : '';
+    }
+
+    final nextIndex = otp.length >= _length ? _length - 1 : otp.length;
+
+    _focusNodes[nextIndex].requestFocus();
+
+    _notify();
+  }
+
   void _onDigitChanged(int index, String value) {
+    if (value.length > 1) {
+      _setOtp(value);
+      return;
+    }
+
     if (value.isNotEmpty && index < _length - 1) {
       _focusNodes[index + 1].requestFocus();
     }
@@ -65,8 +92,10 @@ class _OtpInputState extends State<OtpInput> {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor =
-        widget.hasError ? _errorRed : const Color.fromARGB(98, 255, 255, 255);
+    final borderColor = widget.hasError
+        ? _errorRed
+        : const Color.fromARGB(98, 255, 255, 255);
+
     final textColor = widget.hasError ? _errorRed : Colors.white;
 
     return Row(
@@ -78,7 +107,10 @@ class _OtpInputState extends State<OtpInput> {
           decoration: BoxDecoration(
             color: _inputBg,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: borderColor, width: 1.2),
+            border: Border.all(
+              color: borderColor,
+              width: 1.2,
+            ),
           ),
           child: Center(
             child: Focus(
@@ -88,9 +120,11 @@ class _OtpInputState extends State<OtpInput> {
                 focusNode: _focusNodes[index],
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.center,
-                maxLength: 1,
+                maxLength: _length,
                 cursorColor: Colors.white,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
                 style: TextStyle(
                   color: textColor,
                   fontSize: 16,
@@ -98,7 +132,10 @@ class _OtpInputState extends State<OtpInput> {
                 ),
                 decoration: const InputDecoration(
                   hintText: 'X',
-                  hintStyle: TextStyle(color: _textMuted, fontSize: 14),
+                  hintStyle: TextStyle(
+                    color: _textMuted,
+                    fontSize: 14,
+                  ),
                   counterText: '',
                   border: InputBorder.none,
                   isDense: true,
