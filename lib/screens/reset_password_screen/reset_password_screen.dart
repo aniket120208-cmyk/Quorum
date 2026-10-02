@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
 import 'package:quorum/screens/widgets/otp_input.dart';
-
+import 'package:quorum/utils/validators.dart';
 import 'bloc/reset_password_bloc.dart';
 import 'bloc/reset_password_event.dart';
 import 'bloc/reset_password_state.dart';
@@ -21,6 +21,7 @@ class ResetPasswordScreen extends StatelessWidget {
   static const Color primaryBlue = Color(0xFF4743EB);
   static const Color linkBlue = Color(0xFF5D5FEF);
   static const Color errorRed = Color(0xFFEF4444);
+  static const Color successGreen = Color(0xFF22C55E);
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +88,7 @@ class ResetPasswordScreen extends StatelessWidget {
 
   Widget _buildFormCard(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(16),
@@ -141,10 +142,14 @@ class ResetPasswordScreen extends StatelessWidget {
               _buildPasswordField(
                 hintText: 'Create a strong password',
                 obscureText: state.obscureNewPassword,
-                hasError: false,
-                onToggle: () => bloc.add(ResetToggleNewPasswordVisibility()),
-                onChanged: (v) => bloc.add(ResetNewPasswordChanged(v)),
+                hasError: state.passwordFormatError != null,
+                onToggle: () =>
+                    bloc.add(ResetToggleNewPasswordVisibility()),
+                onChanged: (value) =>
+                    bloc.add(ResetNewPasswordChanged(value)),
               ),
+              const SizedBox(height: 12),
+              _buildPasswordRules(state),
               const SizedBox(height: 18),
               const Text(
                 'Confirm password',
@@ -161,7 +166,8 @@ class ResetPasswordScreen extends StatelessWidget {
                 hasError: state.passwordError != null,
                 onToggle: () =>
                     bloc.add(ResetToggleConfirmPasswordVisibility()),
-                onChanged: (v) => bloc.add(ResetConfirmPasswordChanged(v)),
+                onChanged: (value) =>
+                    bloc.add(ResetConfirmPasswordChanged(value)),
               ),
               if (state.passwordError != null) ...[
                 const SizedBox(height: 8),
@@ -191,7 +197,10 @@ class ResetPasswordScreen extends StatelessWidget {
                 children: [
                   const Text(
                     "Didn't receive the code?",
-                    style: TextStyle(color: textLight, fontSize: 13),
+                    style: TextStyle(
+                      color: textLight,
+                      fontSize: 13,
+                    ),
                   ),
                   GestureDetector(
                     onTap: state.canResend
@@ -251,6 +260,71 @@ class ResetPasswordScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildPasswordRules(ResetPasswordState state) {
+    final password = state.newPassword;
+    final hasError = state.passwordFormatError != null;
+
+    Widget rule(String text, bool met) {
+      final color =
+          met ? successGreen : (hasError ? errorRed : textMuted);
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(
+          children: [
+            Icon(
+              met
+                  ? Icons.check_circle_rounded
+                  : Icons.circle_outlined,
+              size: 15,
+              color: color,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Password must include the following:',
+          style: TextStyle(
+            color: textLight,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        rule(
+          '8 characters minimum',
+          PasswordRules.hasMinLength(password),
+        ),
+        rule(
+          'At least one uppercase letter',
+          PasswordRules.hasUppercase(password),
+        ),
+        rule(
+          'At least one lowercase letter',
+          PasswordRules.hasLowercase(password),
+        ),
+        rule(
+          'At least one special character (e.g. !@\$%^&*)',
+          PasswordRules.hasSpecial(password),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPasswordField({
     required String hintText,
     required bool obscureText,
@@ -262,16 +336,27 @@ class ResetPasswordScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: inputBg,
         borderRadius: BorderRadius.circular(10),
-        border: hasError ? Border.all(color: errorRed, width: 1.2) : null,
+        border: hasError
+            ? Border.all(
+                color: errorRed,
+                width: 1.2,
+              )
+            : null,
       ),
       child: TextField(
         obscureText: obscureText,
         onChanged: onChanged,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 14,
+        ),
         cursorColor: Colors.white,
         decoration: InputDecoration(
           hintText: hintText,
-          hintStyle: const TextStyle(color: textMuted, fontSize: 14),
+          hintStyle: const TextStyle(
+            color: textMuted,
+            fontSize: 14,
+          ),
           prefixIcon: const Icon(
             Icons.lock_outline_rounded,
             color: textMuted,
@@ -288,8 +373,10 @@ class ResetPasswordScreen extends StatelessWidget {
             onPressed: onToggle,
           ),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
         ),
       ),
     );
