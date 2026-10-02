@@ -26,6 +26,8 @@ class _OtpInputState extends State<OtpInput> {
   final List<FocusNode> _focusNodes =
       List.generate(_length, (_) => FocusNode());
 
+  final List<String> _prev = List.filled(_length, '');
+
   @override
   void dispose() {
     for (final c in _controllers) {
@@ -38,6 +40,9 @@ class _OtpInputState extends State<OtpInput> {
   }
 
   void _notify() {
+    for (int i = 0; i < _length; i++) {
+      _prev[i] = _controllers[i].text;
+    }
     widget.onChanged(_controllers.map((c) => c.text).join());
   }
 
@@ -64,6 +69,15 @@ class _OtpInputState extends State<OtpInput> {
 
   void _onDigitChanged(int index, String value) {
     if (value.length > 1) {
+      final prev = _prev[index];
+      if (prev.length == 1 && value.length == 2) {
+        final typed = value.startsWith(prev) ? value[1] : value[0];
+        _controllers[index].text = typed;
+        if (index < _length - 1) _focusNodes[index + 1].requestFocus();
+        _notify();
+        return;
+      }
+
       _setOtp(value);
       return;
     }
