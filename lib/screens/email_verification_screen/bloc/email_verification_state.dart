@@ -10,7 +10,7 @@ class EmailVerificationState extends Equatable {
 
   const EmailVerificationState({
     this.otpDigits = const ['', '', '', '', '', ''],
-    this.resendCountdown = 15,
+    this.resendCountdown = 30,
     this.status = OtpStatus.initial,
     this.message,
   });

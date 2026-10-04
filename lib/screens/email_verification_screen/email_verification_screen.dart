@@ -5,7 +5,7 @@ import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/email_verification_screen/bloc/email_verification_bloc.dart';
 import 'package:quorum/screens/email_verification_screen/bloc/email_verification_event.dart';
 import 'package:quorum/screens/email_verification_screen/bloc/email_verification_state.dart';
-import 'package:quorum/screens/home_screen.dart';
+import 'package:quorum/screens/role_selection_screens/bloc/role_selection_screen.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
@@ -46,6 +46,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     return BlocProvider(
       create: (context) => EmailVerificationBloc(
         authRepository: context.read<AuthRepository>(),
+        email: widget.email,
       ),
       child: Scaffold(
         backgroundColor: darkBg,
@@ -196,7 +197,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const HomeScreen(),
+                  builder: (_) => const UseQuorumScreen(),
                 ),
                 (route) => false,
               );

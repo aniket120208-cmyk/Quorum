@@ -9,7 +9,9 @@ class EmailVerificationBloc
     extends Bloc<EmailVerificationEvent, EmailVerificationState> {
   EmailVerificationBloc({
     required AuthRepository authRepository,
+    required String email,
   })  : _authRepository = authRepository,
+        _email = email,
         super(const EmailVerificationState()) {
     on<OtpDigitChanged>(_onOtpDigitChanged);
     on<ResendOtpTimerTicked>(_onResendOtpTimerTicked);
@@ -21,6 +23,7 @@ class EmailVerificationBloc
   }
 
   final AuthRepository _authRepository;
+  final String _email;
   StreamSubscription<int>? _timerSubscription;
 
   void _onOtpDigitChanged(
@@ -90,8 +93,7 @@ class EmailVerificationBloc
     );
 
     try {
-      await _authRepository.verifyEmail(state.fullOtp);
-      await _authRepository.fetchProfile();
+      await _authRepository.verifyEmail(email: _email, otp: state.fullOtp);
 
       emit(
         state.copyWith(
@@ -122,7 +124,7 @@ class EmailVerificationBloc
     );
 
     try {
-      await _authRepository.sendVerificationOtp();
+      await _authRepository.sendVerificationOtp(_email);
     } catch (e) {
       await _timerSubscription?.cancel();
 
@@ -141,8 +143,8 @@ class EmailVerificationBloc
 
     _timerSubscription = Stream.periodic(
       const Duration(seconds: 1),
-      (x) => 14 - x,
-    ).take(15).listen(
+      (x) => 29 - x,
+    ).take(30).listen(
       (duration) {
         add(ResendOtpTimerTicked(duration));
       },
