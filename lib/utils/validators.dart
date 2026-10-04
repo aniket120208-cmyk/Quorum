@@ -1,8 +1,20 @@
+import 'package:flutter/services.dart';
+
+final List<TextInputFormatter> emailInputFormatters = [
+  FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z0-9@._%+\-]")),
+  LengthLimitingTextInputFormatter(254),
+];
+
 final RegExp _emailRegExp = RegExp(
-  r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+  r'^[a-zA-Z0-9](?:[a-zA-Z0-9._%+\-]*[a-zA-Z0-9])?'
+  r'@(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$',
 );
 
-bool isValidEmail(String value) => _emailRegExp.hasMatch(value.trim());
+bool isValidEmail(String value) {
+  final email = value.trim();
+  if (email.length > 254 || email.contains('..')) return false;
+  return _emailRegExp.hasMatch(email);
+}
 
 String? validateName(String value) {
   final name = value.trim();

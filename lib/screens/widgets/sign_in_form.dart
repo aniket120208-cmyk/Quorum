@@ -1,5 +1,9 @@
+import 'package:quorum/utils/validators.dart';
+import 'package:quorum/screens/email_verification_screen/email_verification_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/repositories/auth_repository.dart';
+import 'package:quorum/screens/role_selection_screens/bloc/role_selection_screen.dart';
 import 'package:quorum/screens/forgot_password_screen/forgot_password_screen.dart';
 import 'package:quorum/screens/home_screen.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_bloc.dart';
@@ -25,11 +29,25 @@ class LoginFormCard extends StatelessWidget {
       ),
       child: BlocConsumer<LoginBloc, LoginState>(
         listenWhen: (previous, current) =>
-            !previous.isSuccess && current.isSuccess,
-        listener: (context, state) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            (!previous.isSuccess && current.isSuccess) ||
+            (!previous.needsVerification && current.needsVerification),
+        listener: (context, state) async {
+          if (state.needsVerification) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => EmailVerificationScreen(email: state.email.trim()),
+              ),
+            );
+            return;
+          }
+          final navigator = Navigator.of(context);
+          final needsRole =
+              await context.read<AuthRepository>().needsRoleSelection();
+          navigator.pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) =>
+                  needsRole ? const UseQuorumScreen() : const HomeScreen(),
+            ),
             (route) => false,
           );
         },
@@ -57,6 +75,10 @@ class LoginFormCard extends StatelessWidget {
                   ),
                 ),
                 child: TextField(
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  inputFormatters: emailInputFormatters,
                   onChanged: (val) =>
                       context.read<LoginBloc>().add(EmailChanged(val)),
                   style: TextStyle(
