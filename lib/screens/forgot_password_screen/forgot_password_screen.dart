@@ -1,3 +1,4 @@
+import 'package:quorum/utils/validators.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
@@ -232,6 +233,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 child: TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  inputFormatters: emailInputFormatters,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
