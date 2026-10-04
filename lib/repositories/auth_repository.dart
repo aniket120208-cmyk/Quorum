@@ -17,16 +17,15 @@ class AuthRepository {
 
   Stream<void> get sessionExpired => _api.sessionExpired;
 
-  Future<AppUser> register({
+  Future<void> register({
     required String name,
     required String email,
     required String password,
   }) async {
-    final response = await _api.post(
+    await _api.post(
       '/api/auth/register',
       body: {'name': name.trim(), 'email': email.trim(), 'password': password},
     );
-    return _startSession(response);
   }
 
   Future<AppUser> login({
@@ -46,7 +45,10 @@ class AuthRepository {
     if (data == null) {
       throw const ApiException('Unexpected response from the server.');
     }
-    return _currentUser = AppUser.fromJson(data);
+    final nested = data['user'];
+    final userJson =
+        nested is Map ? Map<String, dynamic>.from(nested) : data;
+    return _currentUser = AppUser.fromJson(userJson);
   }
 
   Future<AppUser?> restoreSession() async {
@@ -57,22 +59,43 @@ class AuthRepository {
 
   Future<void> logout() async {
     try {
-      final refreshToken = await _tokens.readRefreshToken();
-      if (refreshToken != null) {
-        await _api.post('/api/auth/logout', body: {'refreshToken': refreshToken});
-      }
+      await _api.post('/api/auth/logout', auth: true);
     } catch (_) {
     } finally {
       await _tokens.clear();
+      await _tokens.clearRolePending();
       _currentUser = null;
     }
   }
 
-  Future<void> sendVerificationOtp() =>
-      _api.post('/api/otp/send-verification', auth: true);
+  Future<void> sendVerificationOtp(String email) =>
+      _api.post('/api/otp/send-verification', body: {'email': email.trim()});
+      
+  Future<AppUser> verifyEmail({
+    required String email,
+    required String otp,
+  }) async {
+    final response = await _api.post(
+      '/api/otp/verify-email',
+      body: {'email': email.trim(), 'otp': otp},
+    );
+    final user = await _startSession(response);
+    await _tokens.markRolePending(user.id);
+    return user;
+  }
 
-  Future<void> verifyEmail(String otp) =>
-      _api.post('/api/otp/verify-email', body: {'otp': otp}, auth: true);
+  Future<bool> needsRoleSelection() async {
+    final userId = _currentUser?.id;
+    if (userId == null) return false;
+    return await _tokens.readRolePendingUser() == userId;
+  }
+
+  Future<void> completeRoleSelection([List<String> roles = const []]) async {
+    await _tokens.clearRolePending();
+  }
+  
+  Future<void> enableTwoFactor(String code) =>
+      _api.post('/api/auth/2fa/enable', body: {'code': code}, auth: true);
 
   Future<void> forgotPassword(String email) =>
       _api.post('/api/otp/forgot-password', body: {'email': email.trim()});
@@ -83,22 +106,45 @@ class AuthRepository {
         body: {'email': email.trim(), 'otp': otp, 'newPassword': newPassword},
       );
 
-  Future<AppUser> _startSession(ApiResponse response) async {
-    final data = response.data;
-    final accessToken = data?['accessToken'];
-    final refreshToken = data?['refreshToken'];
-    final userJson = data?['user'];
+  _Session? _extractSession(Map<String, dynamic>? data) {
+    if (data == null) return null;
+    final tokens = data['tokens'] is Map
+        ? Map<String, dynamic>.from(data['tokens'] as Map)
+        : data;
+    final access = tokens['accessToken'] ?? tokens['access_token'] ?? tokens['access'];
+    final refresh =
+        tokens['refreshToken'] ?? tokens['refresh_token'] ?? tokens['refresh'];
+    if (access is! String || access.isEmpty) return null;
+    if (refresh is! String || refresh.isEmpty) return null;
+    final userJson = data['user'];
+    return _Session(
+      access,
+      refresh,
+      userJson is Map ? Map<String, dynamic>.from(userJson) : null,
+    );
+  }
 
-    if (accessToken is! String || refreshToken is! String || userJson is! Map) {
+  Future<AppUser> _startSession(ApiResponse response) async {
+    final session = _extractSession(response.data);
+    if (session == null) {
       throw const ApiException(
         'Unexpected response from the server. Please try again.',
       );
     }
 
     await _tokens.saveTokens(
-      accessToken: accessToken,
-      refreshToken: refreshToken,
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
     );
-    return _currentUser = AppUser.fromJson(Map<String, dynamic>.from(userJson));
+    final userJson = session.user;
+    if (userJson == null) return fetchProfile();
+    return _currentUser = AppUser.fromJson(userJson);
   }
+}
+
+class _Session {
+  const _Session(this.accessToken, this.refreshToken, this.user);
+  final String accessToken;
+  final String refreshToken;
+  final Map<String, dynamic>? user;
 }

@@ -19,7 +19,25 @@ class AppUser {
       name: '${json['name'] ?? ''}',
       email: '${json['email'] ?? ''}',
       role: '${json['role'] ?? 'member'}',
-      isEmailVerified: json['isEmailVerified'] == true,
+      isEmailVerified: _readVerified(json),
     );
+  }
+
+  static bool _readVerified(Map<String, dynamic> json) {
+    for (final key in const [
+      'isEmailVerified',
+      'emailVerified',
+      'is_email_verified',
+      'email_verified',
+      'isVerified',
+      'verified',
+    ]) {
+      final value = json[key];
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) return value.toLowerCase() == 'true';
+    }
+    final at = json['emailVerifiedAt'] ?? json['email_verified_at'];
+    return at != null;
   }
 }
