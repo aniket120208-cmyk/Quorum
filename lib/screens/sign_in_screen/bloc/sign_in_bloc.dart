@@ -50,6 +50,15 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
           password: state.password,
         );
         emit(state.copyWith(isLoading: false, isSuccess: true));
+      } on ApiException catch (e) {
+        final unverified = e.statusCode == 403 &&
+            e.message.toLowerCase().contains('verif');
+        emit(state.copyWith(
+          isLoading: false,
+          needsVerification: unverified,
+          errorMessage: () => unverified ? null : e.message,
+        ));
+        if (unverified) emit(state.copyWith(needsVerification: false));
       } catch (e) {
         emit(state.copyWith(
           isLoading: false,
