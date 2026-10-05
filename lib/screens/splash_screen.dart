@@ -1,60 +1,55 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
+import 'package:quorum/screens/email_verification_screen/email_verification_screen.dart';
 import 'package:quorum/screens/home_screen.dart';
 import 'package:quorum/screens/onboarding_screen.dart';
+import 'package:quorum/screens/role_selection_screens/bloc/role_selection_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _failed = false;
   @override
   void initState() {
     super.initState();
-    _restoreSession(context.read<AuthRepository>());
+    _restoreSession();
   }
 
-  Future<void> _restoreSession(AuthRepository repository) async {
+  Future<void> _restoreSession() async {
+    final repository = context.read<AuthRepository>();
+
+    if (_failed) {
+      setState(() => _failed = false);
+    }
+
     try {
       final user = await repository.restoreSession();
-
       if (!mounted) return;
-
-      if (user == null || !user.isEmailVerified) {
-        await repository.logout();
-
+      if (user == null) {
+        _go(const OnboardingScreen());
+      } else if (!user.isEmailVerified) {
+        _go(EmailVerificationScreen(email: user.email));
+      } else if (await repository.needsRoleSelection()) {
         if (!mounted) return;
-
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => const OnboardingScreen(),
-          ),
-        );
-        return;
+        _go(const UseQuorumScreen());
+      } else {
+        _go(const HomeScreen());
       }
-
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => const HomeScreen(),
-        ),
-      );
     } catch (_) {
       if (!mounted) return;
-
-      await repository.logout();
-
-      if (!mounted) return;
-
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => const OnboardingScreen(),
-        ),
-      );
+      setState(() => _failed = true);
     }
+  }
+
+  void _go(Widget screen) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => screen),
+    );
   }
 
   @override
@@ -70,13 +65,24 @@ class _SplashScreenState extends State<SplashScreen> {
               width: 140,
             ),
             const SizedBox(height: 24),
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
+            if (_failed) ...[
+              const Text(
+                "Couldn't connect. Please check your internet connection.",
+                textAlign: TextAlign.center,
               ),
-            ),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: _restoreSession,
+                child: const Text('Retry'),
+              ),
+            ] else
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                ),
+              ),
           ],
         ),
       ),
