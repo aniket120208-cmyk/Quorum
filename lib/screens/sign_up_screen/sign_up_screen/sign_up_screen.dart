@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
@@ -160,6 +161,7 @@ class SignUpScreen extends StatelessWidget {
                 hintText: 'example@gmail.com',
                 prefixIcon: Icons.mail_outline_rounded,
                 keyboardType: TextInputType.emailAddress,
+                inputFormatters: emailInputFormatters,
                 hasError: state.emailError != null,
                 onChanged: (val) => bloc.add(WorkEmailChanged(val)),
               ),
@@ -323,6 +325,7 @@ class SignUpScreen extends StatelessWidget {
     VoidCallback? onToggleVisibility,
     ValueChanged<String>? onChanged,
     TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -338,6 +341,7 @@ class SignUpScreen extends StatelessWidget {
       child: TextField(
         obscureText: obscureText,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         onChanged: onChanged,
         style: const TextStyle(
           color: Colors.white,
