@@ -77,6 +77,19 @@ class ApiClient {
     );
   }
 
+  Future<ApiResponse> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    bool auth = false,
+  }) {
+    return _send(
+      'PATCH',
+      path,
+      body: body,
+      auth: auth,
+    );
+  }
+
   Future<Map<String, dynamic>> createMeeting({
     Map<String, dynamic>? body,
   }) async {

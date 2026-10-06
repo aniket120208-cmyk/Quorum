@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:quorum/api/api_exception.dart';
 import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/home_screen/home_screen.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
@@ -29,10 +30,10 @@ class UseOption {
 }
 
 const _options = [
-  UseOption('org', 'Work at an Organization'),
-  UseOption('freelance', 'Freelance'),
-  UseOption('hire', 'Hire & Collaborate'),
-  UseOption('communities', 'Communities'),
+  UseOption('ORGANIZATION', 'Work at an Organization'),
+  UseOption('FREELANCE', 'Freelance'),
+  UseOption('HIRE_COLLABORATE', 'Hire & Collaborate'),
+  UseOption('COMMUNITY', 'Communities'),
 ];
 
 class UseQuorumScreen extends StatefulWidget {
@@ -48,15 +49,24 @@ class _UseQuorumScreenState extends State<UseQuorumScreen> {
 
   bool get _hasSelection => _selected.isNotEmpty;
 
-  Future<void> _finish(List<String> roles) async {
+  Future<void> _finish(List<String> useCases) async {
     if (_busy) return;
     setState(() => _busy = true);
 
     final repository = context.read<AuthRepository>();
     final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
 
-    await repository.completeRoleSelection(roles);
+    try {
+      await repository.saveOnboarding(useCases);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(content: Text(messageFromError(e))));
+      return;
+    }
 
+    if (!mounted) return;
     navigator.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const HomeScreen()),
       (route) => false,
@@ -257,10 +267,16 @@ class _UseQuorumScreenState extends State<UseQuorumScreen> {
             borderRadius: BorderRadius.circular(12 * s),
           ),
         ),
-        child: Text(
-          'Continue',
-          style: TextStyle(fontSize: 14 * s, fontWeight: FontWeight.w600),
-        ),
+        child: _busy
+            ? SizedBox(
+                width: 18 * s,
+                height: 18 * s,
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(
+                'Continue',
+                style: TextStyle(fontSize: 14 * s, fontWeight: FontWeight.w600),
+              ),
       ),
     );
   }

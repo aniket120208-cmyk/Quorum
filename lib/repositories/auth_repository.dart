@@ -85,13 +85,35 @@ class AuthRepository {
   }
 
   Future<bool> needsRoleSelection() async {
-    final userId = _currentUser?.id;
-    if (userId == null) return false;
-    return await _tokens.readRolePendingUser() == userId;
+    final user = _currentUser;
+    if (user == null) return false;
+    final onboarded = user.isOnboarded;
+    if (onboarded != null) return !onboarded;
+    return await _tokens.readRolePendingUser() == user.id;
   }
 
-  Future<void> completeRoleSelection([List<String> roles = const []]) async {
+  Future<AppUser> saveOnboarding(List<String> useCases) async {
+    final response = await _api.patch(
+      '/api/users/onboarding',
+      body: {'useCases': useCases},
+      auth: true,
+    );
+
+    final nested = response.data?['user'];
+    final savedUseCases = nested is Map && nested['useCases'] is List
+        ? (nested['useCases'] as List).map((e) => '$e').toList()
+        : useCases;
+
     await _tokens.clearRolePending();
+
+    final current = _currentUser;
+    if (current == null) {
+      return _currentUser = await fetchProfile();
+    }
+    return _currentUser = current.copyWith(
+      isOnboarded: true,
+      useCases: savedUseCases,
+    );
   }
   
   Future<void> enableTwoFactor(String code) =>
