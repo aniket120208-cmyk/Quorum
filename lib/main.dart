@@ -14,7 +14,14 @@ void main() {
   final apiClient = ApiClient(tokenStorage: tokenStorage);
   final authRepository =
       AuthRepository(api: apiClient, tokenStorage: tokenStorage);
-  runApp(Quorum(authRepository: authRepository));
+
+  runApp(
+    Quorum(
+      apiClient: apiClient,
+      tokenStorage: tokenStorage,
+      authRepository: authRepository,
+    ),
+  );
 }
 
 class AppColors {
@@ -44,8 +51,17 @@ class AppColors {
 }
 
 class Quorum extends StatefulWidget {
-  const Quorum({super.key, required this.authRepository});
+  const Quorum({
+    super.key,
+    required this.apiClient,
+    required this.tokenStorage,
+    required this.authRepository,
+  });
+
+  final ApiClient apiClient;
+  final TokenStorage tokenStorage;
   final AuthRepository authRepository;
+
   @override
   State<Quorum> createState() => _QuorumState();
 }
@@ -79,8 +95,12 @@ class _QuorumState extends State<Quorum> {
 
   @override
   Widget build(BuildContext context) {
-    return RepositoryProvider<AuthRepository>.value(
-      value: widget.authRepository,
+    return MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider<TokenStorage>.value(value: widget.tokenStorage),
+        RepositoryProvider<ApiClient>.value(value: widget.apiClient),
+        RepositoryProvider<AuthRepository>.value(value: widget.authRepository),
+      ],
       child: MaterialApp(
         navigatorKey: _navigatorKey,
         scaffoldMessengerKey: _messengerKey,

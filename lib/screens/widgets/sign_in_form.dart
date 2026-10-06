@@ -5,7 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/role_selection_screens/bloc/role_selection_screen.dart';
 import 'package:quorum/screens/forgot_password_screen/forgot_password_screen.dart';
-import 'package:quorum/screens/home_screen.dart';
+import 'package:quorum/screens/home_screen/home_screen.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_bloc.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_event.dart';
 import 'package:quorum/screens/sign_in_screen/bloc/sign_in_state.dart';

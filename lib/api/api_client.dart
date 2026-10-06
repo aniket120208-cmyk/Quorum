@@ -7,7 +7,7 @@ import 'api_configuration.dart';
 import 'api_exception.dart';
 
 class ApiResponse {
-  const ApiResponse({required this.message, this.data,});
+  const ApiResponse({required this.message, this.data});
   final String message;
   final Map<String, dynamic>? data;
 }
@@ -19,7 +19,9 @@ class ApiClient {
   })  : _tokens = tokenStorage,
         _dio = dio ?? _buildDio() {
     _dio.interceptors.add(
-      InterceptorsWrapper(onRequest: _onRequest, onError: _onError,
+      InterceptorsWrapper(
+        onRequest: _onRequest,
+        onError: _onError,
       ),
     );
   }
@@ -75,6 +77,22 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> createMeeting({
+    Map<String, dynamic>? body,
+  }) async {
+    final response = await post(
+      '/api/meetings',
+      body: body,
+      auth: true,
+    );
+
+    if (response.data == null) {
+      throw const ApiException('Missing meeting data from server response.');
+    }
+
+    return response.data!;
+  }
+
   Future<bool> refreshSession() {
     return _refreshAccessToken();
   }
@@ -122,18 +140,11 @@ class ApiClient {
   ) async {
     final request = error.requestOptions;
 
-    final isUnauthorized =
-        error.response?.statusCode == 401;
+    final isUnauthorized = error.response?.statusCode == 401;
+    final isAuthenticatedRequest = request.extra[_authKey] == true;
+    final hasAlreadyRetried = request.extra[_retriedKey] == true;
 
-    final isAuthenticatedRequest =
-        request.extra[_authKey] == true;
-
-    final hasAlreadyRetried =
-        request.extra[_retriedKey] == true;
-
-    if (!isUnauthorized ||
-        !isAuthenticatedRequest ||
-        hasAlreadyRetried) {
+    if (!isUnauthorized || !isAuthenticatedRequest || hasAlreadyRetried) {
       handler.next(error);
       return;
     }
@@ -152,9 +163,12 @@ class ApiClient {
 
       request.extra[_retriedKey] = true;
 
-      final newRequest = await _dio.fetch<dynamic>(
-        request,
-      );
+      final newToken = _tokens.accessToken;
+      if (newToken != null && newToken.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $newToken';
+      }
+
+      final newRequest = await _dio.fetch<dynamic>(request);
 
       handler.resolve(newRequest);
     } catch (e) {
@@ -196,7 +210,7 @@ class ApiClient {
           _refreshInFlight = null;
         }
       },
-      onError: (_,_) {
+      onError: (_, _) {
         if (identical(_refreshInFlight, future)) {
           _refreshInFlight = null;
         }
@@ -208,8 +222,7 @@ class ApiClient {
   Future<bool> _doRefresh() async {
     final refreshToken = await _tokens.readRefreshToken();
 
-    if (refreshToken == null ||
-        refreshToken.isEmpty) {
+    if (refreshToken == null || refreshToken.isEmpty) {
       await _tokens.clear();
       return false;
     }
@@ -313,11 +326,10 @@ class ApiClient {
 
       case DioExceptionType.badResponse:
         final status = e.response?.statusCode;
-
-        final message = _asMap(e.response?.data,)?['message'];
+        final message = _asMap(e.response?.data)?['message'];
 
         return ApiException(
-          message is String? message : _fallbackMessage(status ?? 0),
+          message is String ? message : _fallbackMessage(status ?? 0),
           statusCode: status,
         );
 
@@ -365,6 +377,7 @@ class ApiClient {
     }
     return 'Request failed ($status). Please try again.';
   }
+
   void dispose() {
     _sessionExpired.close();
   }

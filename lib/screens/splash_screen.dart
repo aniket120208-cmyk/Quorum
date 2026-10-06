@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/email_verification_screen/email_verification_screen.dart';
-import 'package:quorum/screens/home_screen.dart';
+import 'package:quorum/screens/home_screen/home_screen.dart';
 import 'package:quorum/screens/onboarding_screen.dart';
 import 'package:quorum/screens/role_selection_screens/bloc/role_selection_screen.dart';
 

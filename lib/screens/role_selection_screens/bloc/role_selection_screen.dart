@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
-import 'package:quorum/screens/home_screen.dart';
+import 'package:quorum/screens/home_screen/home_screen.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
 
 class QuorumColors {
