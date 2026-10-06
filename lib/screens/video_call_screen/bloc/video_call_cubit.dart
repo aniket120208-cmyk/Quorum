@@ -1,44 +1,54 @@
-import 'package:equatable/equatable.dart';
+import 'dart:math';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/api/api_client.dart';
-import 'package:quorum/api/api_exception.dart';
 
-enum VideoCallStatus { idle, loading, created, failure }
+enum VideoCallStatus { initial, loading, created, failure }
 
-class VideoCallState extends Equatable {
-  const VideoCallState({
-    this.status = VideoCallStatus.idle,
-    this.code,
-    this.error,
-  });
+class VideoCallState {
   final VideoCallStatus status;
   final String? code;
   final String? error;
 
-  @override
-  List<Object?> get props => [status, code, error];
+  const VideoCallState({
+    this.status = VideoCallStatus.initial,
+    this.code,
+    this.error,
+  });
+
+  VideoCallState copyWith({
+    VideoCallStatus? status,
+    String? code,
+    String? error,
+  }) {
+    return VideoCallState(
+      status: status ?? this.status,
+      code: code ?? this.code,
+      error: error,
+    );
+  }
 }
 
 class VideoCallCubit extends Cubit<VideoCallState> {
-  VideoCallCubit({required ApiClient apiClient})
-      : _apiClient = apiClient,
-        super(const VideoCallState());
+  final ApiClient? apiClient;
 
-  final ApiClient _apiClient;
+  VideoCallCubit({this.apiClient}) : super(const VideoCallState());
 
-  Future<void> createMeeting({Map<String, dynamic>? body}) async {
-    emit(const VideoCallState(status: VideoCallStatus.loading));
-    try {
-      final data = await _apiClient.createMeeting(body: body);
-      emit(VideoCallState(
-        status: VideoCallStatus.created,
-        code: data['code']?.toString(),
-      ));
-    } catch (e) {
-      emit(VideoCallState(
-        status: VideoCallStatus.failure,
-        error: e is ApiException ? e.message : e.toString(),
-      ));
-    }
+  Future<void> createMeeting() async {
+    emit(state.copyWith(status: VideoCallStatus.loading));
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    final generatedCode = _generateRandomCode();
+    emit(state.copyWith(
+      status: VideoCallStatus.created,
+      code: generatedCode,
+    ));
+  }
+
+  String _generateRandomCode() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    final random = Random();
+    String chunk(int length) =>
+        List.generate(length, (_) => chars[random.nextInt(chars.length)]).join();
+    return '${chunk(3)}-${chunk(4)}-${chunk(3)}';
   }
 }
