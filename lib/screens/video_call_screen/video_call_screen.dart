@@ -139,7 +139,7 @@ class _VideoCallLandingViewState extends State<_VideoCallLandingView> {
               Navigator.pop(dialogCtx);
               _openRoom(code, title: 'Instant Meeting');
             },
-            child: const Text('Start now'),
+            child: const Text('Start now', style: TextStyle(color: Colors.white),),
           ),
         ],
       ),
@@ -331,7 +331,7 @@ class _VideoCallLandingViewState extends State<_VideoCallLandingView> {
                         ),
                       ),
                       onPressed: enabled ? _handleJoin : null,
-                      child: const Text('Join'),
+                      child: const Text('Join', style: TextStyle(color: Colors.white),),
                     ),
                   );
                 },
