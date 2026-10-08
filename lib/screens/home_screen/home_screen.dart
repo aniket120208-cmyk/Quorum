@@ -40,42 +40,51 @@ class _HomeView extends StatelessWidget {
             index: s.tabIndex,
             children: _tabs,
           ),
-          bottomNavigationBar: BottomNavigationBar(
-            type: BottomNavigationBarType.fixed,
-            currentIndex: s.tabIndex,
-            onTap: (i) => context.read<HomeCubit>().selectTab(i),
-            backgroundColor: AppColors.surface,
-            selectedItemColor: AppColors.primaryLight,
-            unselectedItemColor: AppColors.textSecondary,
-            selectedFontSize: 11,
-            unselectedFontSize: 11,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.home_outlined),
-                activeIcon: Icon(Icons.home),
-                label: 'Home',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.chat_bubble_outline),
-                activeIcon: Icon(Icons.chat_bubble),
-                label: 'Chat',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.videocam_outlined),
-                activeIcon: Icon(Icons.videocam),
-                label: 'Video Call',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.groups_outlined),
-                activeIcon: Icon(Icons.groups),
-                label: 'Community',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.auto_awesome_outlined),
-                activeIcon: Icon(Icons.auto_awesome),
-                label: 'AI Assistant',
-              ),
-            ],
+          bottomNavigationBar: Theme(
+            data: Theme.of(context).copyWith(
+              splashFactory: NoSplash.splashFactory,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+            ),
+            child: BottomNavigationBar(
+              type: BottomNavigationBarType.fixed,
+              currentIndex: s.tabIndex,
+              onTap: (i) => context.read<HomeCubit>().selectTab(i),
+              backgroundColor: AppColors.surface,
+              selectedItemColor: AppColors.primaryLight,
+              unselectedItemColor: AppColors.textSecondary,
+              selectedFontSize: 11,
+              unselectedFontSize: 11,
+              elevation: 0,
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home_outlined),
+                  activeIcon: Icon(Icons.home),
+                  label: 'Home',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  activeIcon: Icon(Icons.chat_bubble),
+                  label: 'Chat',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.videocam_outlined),
+                  activeIcon: Icon(Icons.videocam),
+                  label: 'Video Call',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.groups_outlined),
+                  activeIcon: Icon(Icons.groups),
+                  label: 'Community',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.auto_awesome_outlined),
+                  activeIcon: Icon(Icons.auto_awesome),
+                  label: 'AI Assistant',
+                ),
+              ],
+            ),
           ),
         );
       },
