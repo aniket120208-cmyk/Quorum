@@ -37,47 +37,62 @@ class ResetPasswordScreen extends StatelessWidget {
             const CornerBackgroundOrb.topRight(backgroundColor: darkBg),
             const CornerBackgroundOrb.bottomLeft(backgroundColor: darkBg),
             SafeArea(
-              child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Reset your password',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: -0.5,
-                      ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 20,
                     ),
-                    const SizedBox(height: 8),
-                    RichText(
-                      text: TextSpan(
-                        text: "We've sent a 6-digit code to\n",
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: textMuted,
-                          height: 1.4,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: email,
-                            style: const TextStyle(
-                              color: Color(0xFF6B82FA),
-                              fontWeight: FontWeight.w500,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight - 40,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Reset your password',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: -0.5,
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            RichText(
+                              text: TextSpan(
+                                text: "We've sent a 6-digit code to\n",
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  color: textMuted,
+                                  height: 1.4,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: email,
+                                    style: const TextStyle(
+                                      color: Color(0xFF6B82FA),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            _buildFormCard(context),
+                            const Spacer(),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 28),
-                    _buildFormCard(context),
-                    const SizedBox(height: 170),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],

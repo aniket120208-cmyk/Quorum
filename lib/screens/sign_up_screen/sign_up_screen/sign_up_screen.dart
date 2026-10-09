@@ -1,5 +1,5 @@
-import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/email_verification_screen/email_verification_screen.dart';
@@ -38,74 +38,79 @@ class SignUpScreen extends StatelessWidget {
             const CornerBackgroundOrb.topRight(backgroundColor: darkBg),
             const CornerBackgroundOrb.bottomLeft(backgroundColor: darkBg),
             SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 20,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Create your account',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: -0.5,
-                      ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 20,
                     ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Start your journey with Quorum',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: textMuted,
-                        fontWeight: FontWeight.w400,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight - 40,
                       ),
-                    ),
-                    const SizedBox(height: 28),
-                    _buildFormCard(context),
-                    const SizedBox(height: 32),
-                    Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'Already have an ',
-                            style: TextStyle(
-                              color: textLight,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const Text(
-                            'account ? ',
-                            style: TextStyle(
-                              color: textLight,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.pop(context);
-                            },
-                            child: const Text(
-                              'Sign In',
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Create your account',
                               style: TextStyle(
-                                color: Color(0xFF5D5FEF),
+                                fontSize: 28,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                color: Colors.white,
+                                letterSpacing: -0.5,
                               ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Start your journey with Quorum',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: textMuted,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            _buildFormCard(context),
+                            const Spacer(),
+                            const SizedBox(height: 24),
+                            Center(
+                              child: Text.rich(
+                                TextSpan(
+                                  text: 'Already have an account? ',
+                                  style: const TextStyle(
+                                    color: textLight,
+                                    fontSize: 14,
+                                  ),
+                                  children: [
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.middle,
+                                      child: GestureDetector(
+                                        onTap: () => Navigator.pop(context),
+                                        child: const Text(
+                                          'Sign In',
+                                          style: TextStyle(
+                                            color: Color(0xFF5D5FEF),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 80),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -133,7 +138,8 @@ class SignUpScreen extends StatelessWidget {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => EmailVerificationScreen(email: state.email.trim()),
+              builder: (_) =>
+                  EmailVerificationScreen(email: state.email.trim()),
             ),
           );
         },
@@ -314,7 +320,8 @@ class SignUpScreen extends StatelessWidget {
                 runSpacing: 4,
                 children: missing.map((rule) {
                   return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1F2228),
                       borderRadius: BorderRadius.circular(4),

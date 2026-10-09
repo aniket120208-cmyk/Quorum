@@ -1,10 +1,9 @@
-import 'package:quorum/utils/validators.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/repositories/auth_repository.dart';
 import 'package:quorum/screens/reset_password_screen/reset_password_screen.dart';
 import 'package:quorum/screens/widgets/corner_background_orb.dart';
-
+import 'package:quorum/utils/validators.dart';
 import 'bloc/forgot_password_bloc.dart';
 import 'bloc/forgot_password_event.dart';
 import 'bloc/forgot_password_state.dart';
@@ -67,63 +66,76 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             if (widget.backgroundCircle != null)
               widget.backgroundCircle!,
             SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 20,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Forgot your password',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: -0.5,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 20,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight - 40,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Forgot your password',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            BlocBuilder<ForgotPasswordBloc,
+                                ForgotPasswordState>(
+                              buildWhen: (previous, current) =>
+                                  previous.email != current.email,
+                              builder: (context, state) {
+                                return RichText(
+                                  text: TextSpan(
+                                    text:
+                                        "We'll send an email verification OTP to\n",
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      color: textMuted,
+                                      height: 1.4,
+                                    ),
+                                    children: [
+                                      TextSpan(
+                                        text: state.email.isEmpty
+                                            ? 'example@gmail.com'
+                                            : state.email,
+                                        style: const TextStyle(
+                                          color: Color(0xFF6B82FA),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 36),
+                            Center(
+                              child: _buildPasswordIllustration(),
+                            ),
+                            const SizedBox(height: 36),
+                            _buildFormCard(context),
+                            const Spacer(),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    BlocBuilder<ForgotPasswordBloc,
-                        ForgotPasswordState>(
-                      buildWhen: (previous, current) =>
-                          previous.email != current.email,
-                      builder: (context, state) {
-                        return RichText(
-                          text: TextSpan(
-                            text:
-                                "We'll send an email verification OTP to\n",
-                            style: const TextStyle(
-                              fontSize: 15,
-                              color: textMuted,
-                              height: 1.4,
-                            ),
-                            children: [
-                              TextSpan(
-                                text: state.email.isEmpty
-                                    ? 'example@gmail.com'
-                                    : state.email,
-                                style: const TextStyle(
-                                  color: Color(0xFF6B82FA),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 36),
-                    Center(
-                      child: _buildPasswordIllustration(),
-                    ),
-                    const SizedBox(height: 36),
-                    _buildFormCard(context),
-                    SizedBox(height: 260,)
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
