@@ -181,6 +181,8 @@ class SignUpScreen extends StatelessWidget {
                 onToggleVisibility: () => bloc.add(TogglePasswordVisibility()),
                 onChanged: (val) => bloc.add(PasswordChanged(val)),
               ),
+              const SizedBox(height: 8),
+              _buildPasswordFeedback(state.password),
               const SizedBox(height: 18),
               _buildFieldLabel('Confirm Password'),
               const SizedBox(height: 8),
@@ -236,8 +238,6 @@ class SignUpScreen extends StatelessWidget {
                         ),
                 ),
               ),
-              const SizedBox(height: 12),
-              _buildPasswordRules(state),
             ],
           );
         },
@@ -245,50 +245,97 @@ class SignUpScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPasswordRules(SignUpState state) {
-    final p = state.password;
-    final hasError = state.passwordFormatError != null;
+  Widget _buildPasswordFeedback(String password) {
+    if (password.isEmpty) return const SizedBox.shrink();
+    final List<String> missing = [];
+    if (!PasswordRules.hasMinLength(password)) missing.add('8+ chars');
+    if (!PasswordRules.hasUppercase(password)) missing.add('uppercase');
+    if (!PasswordRules.hasLowercase(password)) missing.add('lowercase');
+    if (!PasswordRules.hasSpecial(password)) missing.add('symbol');
 
-    Widget rule(String text, bool met) {
-      final color = met ? successGreen : (hasError ? errorRed : textMuted);
-      return Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Row(
-          children: [
-            Icon(
-              met ? Icons.check_circle_rounded : Icons.circle_outlined,
-              size: 15,
-              color: color,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(color: color, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-      );
+    final int score = 4 - missing.length;
+    Color barColor;
+    String scoreLabel;
+
+    switch (score) {
+      case 1:
+        barColor = errorRed;
+        scoreLabel = 'Weak';
+        break;
+      case 2:
+        barColor = const Color(0xFFF59E0B);
+        scoreLabel = 'Fair';
+        break;
+      case 3:
+        barColor = const Color(0xFF3B82F6);
+        scoreLabel = 'Good';
+        break;
+      case 4:
+        barColor = successGreen;
+        scoreLabel = 'Strong';
+        break;
+      default:
+        barColor = inputBg;
+        scoreLabel = '';
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Password must include the following:',
-          style: TextStyle(
-            color: textLight,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          children: List.generate(4, (index) {
+            return Expanded(
+              child: Container(
+                height: 3,
+                margin: EdgeInsets.only(right: index == 3 ? 0 : 5),
+                decoration: BoxDecoration(
+                  color: index < score ? barColor : inputBg,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            );
+          }),
         ),
-        rule('8 characters minimum', PasswordRules.hasMinLength(p)),
-        rule('At least one uppercase letter', PasswordRules.hasUppercase(p)),
-        rule('At least one lowercase letter', PasswordRules.hasLowercase(p)),
-        rule(
-          'At least one special character (e.g. !@\$%^&*)',
-          PasswordRules.hasSpecial(p),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text(
+              scoreLabel,
+              style: TextStyle(
+                color: barColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: missing.map((rule) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1F2228),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: errorRed.withAlpha(120),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      'Needs $rule',
+                      style: const TextStyle(
+                        color: Color(0xFFFCA5A5),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
       ],
     );
