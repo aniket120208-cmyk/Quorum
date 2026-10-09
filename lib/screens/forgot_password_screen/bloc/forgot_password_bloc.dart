@@ -116,8 +116,8 @@ class ForgotPasswordBloc
 
     _timerSubscription = Stream.periodic(
       const Duration(seconds: 1),
-      (x) => 14 - x,
-    ).take(15).listen((duration) {
+      (x) => 29 - x,
+    ).take(30).listen((duration) {
       add(
         ResendTimerTicked(duration),
       );

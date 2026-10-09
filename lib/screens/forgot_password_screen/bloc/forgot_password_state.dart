@@ -16,7 +16,7 @@ class ForgotPasswordState extends Equatable {
   const ForgotPasswordState({
     this.email = '',
     this.emailError,
-    this.resendCountdown = 15,
+    this.resendCountdown = 30,
     this.status = ForgotPasswordStatus.initial,
   });
 

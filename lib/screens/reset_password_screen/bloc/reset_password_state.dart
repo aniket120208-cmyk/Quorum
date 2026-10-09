@@ -23,7 +23,7 @@ class ResetPasswordState extends Equatable {
     this.passwordFormatError,
     this.passwordError,
     this.message,
-    this.resendCountdown = 15,
+    this.resendCountdown = 30,
     this.status = ResetPasswordStatus.initial,
   });
 
