@@ -7,9 +7,10 @@ import 'api_configuration.dart';
 import 'api_exception.dart';
 
 class ApiResponse {
-  const ApiResponse({required this.message, this.data});
+  const ApiResponse({required this.message, this.data, this.rawData});
   final String message;
   final Map<String, dynamic>? data;
+  final dynamic rawData;
 }
 
 class ApiClient {
@@ -55,11 +56,26 @@ class ApiClient {
 
   Future<ApiResponse> get(
     String path, {
+    Map<String, dynamic>? query,
     bool auth = false,
   }) {
     return _send(
       'GET',
       path,
+      query: query,
+      auth: auth,
+    );
+  }
+
+  Future<ApiResponse> delete(
+    String path, {
+    Map<String, dynamic>? body,
+    bool auth = false,
+  }) {
+    return _send(
+      'DELETE',
+      path,
+      body: body,
       auth: auth,
     );
   }
@@ -114,12 +130,16 @@ class ApiClient {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    Map<String, dynamic>? query,
     required bool auth,
   }) async {
     try {
       final response = await _dio.request<dynamic>(
         path,
-        data: method == 'GET' ? null : (body ?? <String, dynamic>{}),
+        queryParameters: query,
+        data: (method == 'GET' || (method == 'DELETE' && body == null))
+            ? null
+            : (body ?? <String, dynamic>{}),
         options: Options(
           method: method,
           extra: {
@@ -130,6 +150,9 @@ class ApiClient {
 
       return _toApiResponse(response);
     } on DioException catch (e) {
+      assert(() {
+        return true;
+      }());
       throw _toApiException(e);
     }
   }
@@ -143,7 +166,6 @@ class ApiClient {
     if (options.extra[_authKey] == true && token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
     }
-
     handler.next(options);
   }
 
@@ -152,7 +174,6 @@ class ApiClient {
     ErrorInterceptorHandler handler,
   ) async {
     final request = error.requestOptions;
-
     final isUnauthorized = error.response?.statusCode == 401;
     final isAuthenticatedRequest = request.extra[_authKey] == true;
     final hasAlreadyRetried = request.extra[_retriedKey] == true;
@@ -309,6 +330,7 @@ class ApiClient {
     return ApiResponse(
       message: rawMessage is String ? rawMessage : '',
       data: rawData is Map ? Map<String, dynamic>.from(rawData) : null,
+      rawData: rawData,
     );
   }
 
@@ -341,10 +363,11 @@ class ApiClient {
         final status = e.response?.statusCode;
         final message = _asMap(e.response?.data)?['message'];
 
-        return ApiException(
-          message is String ? message : _fallbackMessage(status ?? 0),
-          statusCode: status,
-        );
+        var text = message is String ? message : _fallbackMessage(status ?? 0);
+        if (message is! String && status == 404) {
+          text = 'Not found: ${e.requestOptions.path}';
+        }
+        return ApiException(text, statusCode: status);
 
       case DioExceptionType.badCertificate:
         return const ApiException(
