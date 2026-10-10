@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quorum/api/api_client.dart';
+import 'package:quorum/api/chat_socket_service.dart';
 import 'package:quorum/token_storage.dart';
 import 'package:quorum/repositories/auth_repository.dart';
+import 'package:quorum/repositories/chat_repository.dart';
 import 'package:quorum/screens/sign_in_screen/sign_in_screen.dart';
 import 'package:quorum/screens/splash_screen.dart';
 
@@ -15,11 +17,17 @@ void main() {
   final authRepository =
       AuthRepository(api: apiClient, tokenStorage: tokenStorage);
 
+  final chatRepository = ChatRepository(api: apiClient);
+  final chatSocket =
+      ChatSocketService(api: apiClient, tokenStorage: tokenStorage);
+
   runApp(
     Quorum(
       apiClient: apiClient,
       tokenStorage: tokenStorage,
       authRepository: authRepository,
+      chatRepository: chatRepository,
+      chatSocket: chatSocket,
     ),
   );
 }
@@ -56,11 +64,15 @@ class Quorum extends StatefulWidget {
     required this.apiClient,
     required this.tokenStorage,
     required this.authRepository,
+    required this.chatRepository,
+    required this.chatSocket,
   });
 
   final ApiClient apiClient;
   final TokenStorage tokenStorage;
   final AuthRepository authRepository;
+  final ChatRepository chatRepository;
+  final ChatSocketService chatSocket;
 
   @override
   State<Quorum> createState() => _QuorumState();
@@ -77,6 +89,7 @@ class _QuorumState extends State<Quorum> {
     super.initState();
 
     _sessionExpiredSub = widget.authRepository.sessionExpired.listen((_) {
+      widget.chatSocket.disconnect();
       _navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const SigninScreen()),
         (route) => false,
@@ -100,6 +113,8 @@ class _QuorumState extends State<Quorum> {
         RepositoryProvider<TokenStorage>.value(value: widget.tokenStorage),
         RepositoryProvider<ApiClient>.value(value: widget.apiClient),
         RepositoryProvider<AuthRepository>.value(value: widget.authRepository),
+        RepositoryProvider<ChatRepository>.value(value: widget.chatRepository),
+        RepositoryProvider<ChatSocketService>.value(value: widget.chatSocket),
       ],
       child: MaterialApp(
         navigatorKey: _navigatorKey,

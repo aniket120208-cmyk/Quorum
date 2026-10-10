@@ -46,10 +46,21 @@ class ConversationUpdateEvent {
     required this.conversationId,
     this.lastMessage,
     this.unreadCount,
+    this.raw = const {},
   });
   final String conversationId;
   final ChatMessage? lastMessage;
   final int? unreadCount;
+  final Map<String, dynamic> raw;
+}
+
+class ConversationRemovedEvent {
+  const ConversationRemovedEvent({
+    required this.conversationId,
+    this.removedBy,
+  });
+  final String conversationId;
+  final String? removedBy;
 }
 
 class ChatSocketService {
@@ -78,6 +89,7 @@ class ChatSocketService {
   final _reads = StreamController<ReadEvent>.broadcast();
   final _presence = StreamController<PresenceEvent>.broadcast();
   final _updates = StreamController<ConversationUpdateEvent>.broadcast();
+  final _removed = StreamController<ConversationRemovedEvent>.broadcast();
 
   bool get isConnected => _socket?.connected == true;
   Stream<bool> get connection => _connection.stream;
@@ -86,6 +98,7 @@ class ChatSocketService {
   Stream<ReadEvent> get reads => _reads.stream;
   Stream<PresenceEvent> get presence => _presence.stream;
   Stream<ConversationUpdateEvent> get conversationUpdates => _updates.stream;
+  Stream<ConversationRemovedEvent> get conversationRemoved => _removed.stream;
 
   bool isOnline(String userId) => _online.contains(userId);
   DateTime? lastSeen(String userId) => _lastSeen[userId];
@@ -116,8 +129,8 @@ class ChatSocketService {
 
     socket.onConnect((_) {
       _authRetries = 0;
-      for (final id in _rooms) {
-        socket.emit('conversation:join', {'conversationId': id});
+      for (final id in List<String>.of(_rooms)) {
+        _emitJoin(socket, id);
       }
       _connection.add(true);
     });
@@ -146,15 +159,29 @@ class ChatSocketService {
     socket.on('conversation:update', (data) {
       final map = _asMap(data);
       if (map == null) return;
-      final id = '${map['conversationId'] ?? ''}';
+      final id = '${map['conversationId'] ?? map['id'] ?? ''}';
       if (id.isEmpty) return;
       final last = _asMap(map['lastMessage']);
       final unread = map['unreadCount'];
       _updates.add(ConversationUpdateEvent(
         conversationId: id,
-        lastMessage:
-            last == null ? null : ChatMessage.fromJson({...last, 'conversationId': id}),
+        lastMessage: last == null
+            ? null
+            : ChatMessage.fromJson({...last, 'conversationId': id}),
         unreadCount: unread is num ? unread.toInt() : null,
+        raw: map,
+      ));
+    });
+
+    socket.on('conversation:removed', (data) {
+      final map = _asMap(data);
+      final id = '${map?['conversationId'] ?? ''}';
+      if (id.isEmpty) return;
+      _rooms.remove(id);
+      final by = map?['removedBy'];
+      _removed.add(ConversationRemovedEvent(
+        conversationId: id,
+        removedBy: by != null ? '$by' : null,
       ));
     });
 
@@ -223,11 +250,31 @@ class ChatSocketService {
     ));
   }
 
-  void joinConversation(String conversationId) {
+  Future<bool> _emitJoin(io.Socket socket, String conversationId) {
+    final completer = Completer<bool>();
+    socket.emitWithAck(
+      'conversation:join',
+      {'conversationId': conversationId},
+      ack: (dynamic response) {
+        final res = response is List && response.isNotEmpty
+            ? response.first
+            : response;
+        final ok = _asMap(res)?['success'] == true;
+        if (!ok) _rooms.remove(conversationId);
+        if (!completer.isCompleted) completer.complete(ok);
+      },
+    );
+    return completer.future.timeout(
+      _ackTimeout,
+      onTimeout: () => false,
+    );
+  }
+
+  Future<bool> joinConversation(String conversationId) async {
     _rooms.add(conversationId);
-    if (isConnected) {
-      _socket!.emit('conversation:join', {'conversationId': conversationId});
-    }
+    final socket = _socket;
+    if (socket == null || !socket.connected) return false;
+    return _emitJoin(socket, conversationId);
   }
 
   void leaveConversation(String conversationId) {
@@ -348,6 +395,7 @@ class ChatSocketService {
     _reads.close();
     _presence.close();
     _updates.close();
+    _removed.close();
   }
 
   Map<String, dynamic>? _asMap(dynamic value) =>
