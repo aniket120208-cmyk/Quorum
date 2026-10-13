@@ -122,6 +122,18 @@ class ApiClient {
     return response.data!;
   }
 
+  Future<Map<String, dynamic>> getMeeting(String code) async {
+    final response = await get('/api/meetings/$code');
+    if (response.data == null) {
+      throw const ApiException('Meeting not found or already ended.');
+    }
+    return response.data!;
+  }
+
+  Future<void> endMeeting(String code) async {
+    await post('/api/meetings/$code/end', auth: true);
+  }
+
   Future<bool> refreshSession() {
     return _refreshAccessToken();
   }
