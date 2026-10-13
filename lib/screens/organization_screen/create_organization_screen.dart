@@ -1,6 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'invite_team_screen.dart';
+import 'org_shared.dart';
+export 'org_shared.dart' show OrganizationProfile, OrgInvitation;
 
 const _bg = Color(0xFF0B0C14);
 const _cardBorder = Color(0x1AFFFFFF);
@@ -11,19 +15,6 @@ const _purpleDeep = Color(0xFF3B2A93);
 const _purpleSoft = Color(0xFF8B7DFA);
 const _chipBg = Color(0xFF14151F);
 const _tealFill = Color(0xFF16302F);
-
-class OrganizationProfile {
-  const OrganizationProfile({
-    required this.name,
-    required this.domain,
-    required this.teamSize,
-    this.logoPath,
-  });
-  final String name;
-  final String domain;
-  final String teamSize;
-  final String? logoPath;
-}
 
 class _Domain {
   const _Domain(this.label, this.icon);
@@ -65,6 +56,7 @@ class CreateOrganizationScreen extends StatefulWidget {
 
 class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   final _customCtrl = TextEditingController();
   final _picker = ImagePicker();
   String? _domain;
@@ -72,16 +64,24 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   int _sizeIndex = 1;
   File? _logo;
 
+  static const int _maxNameLength = 30;
+  final _nameRegex = RegExp(r'^[a-zA-Z\s]+$');
+  final _emailRegex = RegExp(
+    r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$',
+  );
+
   @override
   void initState() {
     super.initState();
     _nameCtrl.addListener(() => setState(() {}));
+    _emailCtrl.addListener(() => setState(() {}));
     _customCtrl.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _emailCtrl.dispose();
     _customCtrl.dispose();
     super.dispose();
   }
@@ -108,7 +108,17 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     return _domain;
   }
 
-  bool get _valid => _nameCtrl.text.trim().isNotEmpty && _resolvedDomain != null;
+  bool get _isNameValid =>
+      _nameCtrl.text.trim().isNotEmpty &&
+      _nameCtrl.text.length <= _maxNameLength &&
+      _nameRegex.hasMatch(_nameCtrl.text.trim());
+
+  bool get _isEmailValid => _emailRegex.hasMatch(_emailCtrl.text.trim());
+
+  bool get _valid =>
+      _isNameValid &&
+      _isEmailValid &&
+      _resolvedDomain != null;
 
   Future<void> _pickLogo() async {
     try {
@@ -127,20 +137,25 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     }
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     if (!_valid) return;
     FocusScope.of(context).unfocus();
     final profile = OrganizationProfile(
       name: _nameCtrl.text.trim(),
+      email: _emailCtrl.text.trim(),
       domain: _resolvedDomain!,
       teamSize: _teamSizes[_sizeIndex].range,
       logoPath: _logo?.path,
     );
+    final result = await Navigator.of(context).push<OrganizationProfile>(
+      MaterialPageRoute(builder: (_) => InviteTeamScreen(profile: profile)),
+    );
+    if (result == null || !mounted) return;
     if (widget.onContinue != null) {
-      widget.onContinue!(profile);
+      widget.onContinue!(result);
       return;
     }
-    Navigator.of(context).pop(profile);
+    Navigator.of(context).pop(result);
   }
 
   @override
@@ -169,9 +184,41 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
                     const SizedBox(height: 18),
                     _logoCard(),
                     const SizedBox(height: 22),
-                    _label('Organization Name', required: true),
+                    Row(
+                      children: [
+                        _label('Organization Name', required: true),
+                        const Spacer(),
+                        Text(
+                          '${_nameCtrl.text.length}/$_maxNameLength',
+                          style: TextStyle(
+                            color: _nameCtrl.text.length == _maxNameLength
+                                ? _teal
+                                : _muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     _nameField(),
+                    const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        _label('Organization Email', required: true),
+                        const Spacer(),
+                        if (_emailCtrl.text.isNotEmpty && !_isEmailValid)
+                          Text(
+                            'Invalid email format',
+                            style: TextStyle(
+                              color: Colors.redAccent.shade100,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _emailField(),
                     const SizedBox(height: 22),
                     Row(
                       children: [
@@ -385,7 +432,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Row(
-                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(Icons.file_upload_outlined,
                                 size: 14, color: Colors.white70),
@@ -437,31 +484,71 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   }
 
   Widget _nameField() {
+    final hasText = _nameCtrl.text.isNotEmpty;
+    final isInvalid = hasText && !_isNameValid;
     return TextField(
       controller: _nameCtrl,
       style: const TextStyle(color: Colors.white, fontSize: 14),
       textCapitalization: TextCapitalization.words,
-      textInputAction: TextInputAction.done,
-      maxLength: 60,
+      textInputAction: TextInputAction.next,
+      maxLength: _maxNameLength,
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+      ],
       decoration: InputDecoration(
         counterText: '',
         hintText: 'e.g. Software Incubator',
         hintStyle: const TextStyle(color: Colors.white30),
         prefixIcon:
             const Icon(Icons.business_rounded, size: 18, color: _muted),
-        suffixIcon: _nameCtrl.text.isEmpty
-            ? null
-            : IconButton(
+        suffixIcon: hasText
+            ? IconButton(
                 icon: const Icon(Icons.cancel_outlined,
                     size: 18, color: Colors.white30),
                 onPressed: _nameCtrl.clear,
-              ),
+              )
+            : null,
         filled: true,
         fillColor: _chipBg,
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
-        border: _border(_cardBorder),
-        enabledBorder: _border(_cardBorder),
-        focusedBorder: _border(_teal),
+        border: _border(isInvalid ? Colors.redAccent : _cardBorder),
+        enabledBorder: _border(isInvalid ? Colors.redAccent.withOpacity(0.6) : _cardBorder),
+        focusedBorder: _border(isInvalid ? Colors.redAccent : _teal),
+      ),
+    );
+  }
+
+  Widget _emailField() {
+    final hasText = _emailCtrl.text.isNotEmpty;
+    final isInvalid = hasText && !_isEmailValid;
+
+    return TextField(
+      controller: _emailCtrl,
+      keyboardType: TextInputType.emailAddress,
+      textInputAction: TextInputAction.done,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+      maxLength: 80,
+      inputFormatters: [
+        FilteringTextInputFormatter.deny(RegExp(r'\s')),
+      ],
+      decoration: InputDecoration(
+        counterText: '',
+        hintText: 'e.g. contact@domain.com',
+        hintStyle: const TextStyle(color: Colors.white30),
+        prefixIcon: const Icon(Icons.mail_outline_rounded, size: 18, color: _muted),
+        suffixIcon: hasText
+            ? IconButton(
+                icon: const Icon(Icons.cancel_outlined,
+                    size: 18, color: Colors.white30),
+                onPressed: _emailCtrl.clear,
+              )
+            : null,
+        filled: true,
+        fillColor: _chipBg,
+        contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        border: _border(isInvalid ? Colors.redAccent : _cardBorder),
+        enabledBorder: _border(isInvalid ? Colors.redAccent.withOpacity(0.6) : _cardBorder),
+        focusedBorder: _border(isInvalid ? Colors.redAccent : _teal),
       ),
     );
   }
@@ -633,8 +720,8 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
               ),
             ),
           ),
+          ],
         ],
-      ],
     );
   }
 
