@@ -1,243 +1,192 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:quorum/api/api_client.dart';
+import 'package:quorum/api/api_configuration.dart';
+import 'package:quorum/api/api_exception.dart';
+import 'package:quorum/api/meeting_service.dart';
 import 'package:quorum/main.dart';
+import 'package:quorum/repositories/auth_repository.dart';
+import 'package:quorum/token_storage.dart';
 import 'package:share_plus/share_plus.dart';
 import 'models/meeting_result.dart';
 import 'widgets/call_action_button.dart';
 import 'widgets/draggable_pip_view.dart';
 
-enum _Phase { lobby, joining, inCall, leaving }
+enum _Phase { lobby, joining, waiting, inCall, leaving }
+enum _LeaveChoice { stay, leave, endForAll }
 
 class _Reaction {
   final int id;
   final String emoji;
-  final double x; 
+  final double x;
   const _Reaction(this.id, this.emoji, this.x);
 }
 
-class _Participant {
-  final String name;
-  final bool muted;
-  const _Participant(this.name, {this.muted = false});
-}
+String _initial(String name) =>  name.isEmpty ? '?' : name.characters.first.toUpperCase();
 
 class MeetingRoomScreen extends StatefulWidget {
   final String meetingCode;
   final String title;
-  const MeetingRoomScreen({super.key, required this.meetingCode, this.title = 'Meeting'});
+  final bool isHostHint;
+  const MeetingRoomScreen({
+    super.key,
+    required this.meetingCode,
+    this.title = 'Meeting',
+    this.isHostHint = false,
+  });
   @override
   State<MeetingRoomScreen> createState() => _MeetingRoomScreenState();
 }
 
-class _MeetingRoomScreenState extends State<MeetingRoomScreen>
-    with WidgetsBindingObserver {
-  CameraController? _camera;
-  List<CameraDescription> _cameras = [];
-  int _cameraIndex = 0;
-  bool _cameraBusy = false;
+class _MeetingRoomScreenState extends State<MeetingRoomScreen> {
+  late final MeetingService _svc;
+  late final ApiClient _api;
   bool _permissionDenied = false;
-  bool _cameraFailed = false;
-
+  String? _lobbyError;
+  bool _checkingMeeting = true;
+  bool _mediaReady = false;
   _Phase _phase = _Phase.lobby;
-  bool _micMuted = false;
-  bool _cameraOff = false;
-  bool _speakerOn = true;
   bool _handRaised = false;
   bool _controlsVisible = true;
   bool _dialogOpen = false;
-
-  final List<_Participant> _remote = [];
-
   DateTime? _joinedAt;
   final ValueNotifier<int> _seconds = ValueNotifier<int>(0);
   Timer? _callTimer;
-  Timer? _joinTimer;
   Timer? _hideTimer;
-
   final List<_Reaction> _reactions = [];
   int _reactionCounter = 0;
   final _random = Random();
 
-  String get _link => 'https://quorum.app/meet/${widget.meetingCode}';
+  String get _link => ApiConfig.meetingLink(widget.meetingCode);
+  List<RemotePeer> get _remote => _svc.participants;
+  bool get _micMuted => _svc.isMuted;
+  bool get _cameraOff => _svc.isVideoOff || !_svc.hasLocalVideo;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initCamera();
+    _api = context.read<ApiClient>();
+    final user = context.read<AuthRepository>().currentUser;
+    _svc = MeetingService(
+      api: _api,
+      tokens: context.read<TokenStorage>(),
+      meetingCode: widget.meetingCode,
+      userId: user?.id ?? '',
+      userName: (user?.name.isNotEmpty ?? false) ? user!.name : 'Guest',
+    )..addListener(_onService);
+    _bootstrap();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _callTimer?.cancel();
-    _joinTimer?.cancel();
     _hideTimer?.cancel();
     _seconds.dispose();
-    _camera?.dispose();
+    _svc.removeListener(_onService);
+    _svc.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_phase == _Phase.leaving) return;
-    if (state == AppLifecycleState.paused) {
-      _stopCamera();
-    } else if (state == AppLifecycleState.resumed) {
-      if (_camera == null && !_cameraOff && !_permissionDenied && _cameras.isNotEmpty) {
-        _startCamera();
+  Future<void> _bootstrap() async {
+    try {
+      final data = await _api.getMeeting(widget.meetingCode);
+      final hostId = '${data['hostId'] ?? data['host']?['id'] ?? data['host']?['_id'] ?? data['createdBy'] ?? ''}';
+      _svc.isHost = widget.isHostHint ||
+          (hostId.isNotEmpty && hostId == _svc.userId);
+      if (mounted) setState(() => _checkingMeeting = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _checkingMeeting = false;
+          _lobbyError = messageFromError(e);
+        });
       }
-    }
-  }
-
-  Future<void> _initCamera() async {
-    final camStatus = await Permission.camera.request();
-    await Permission.microphone.request();
-    if (!mounted) return;
-    if (!camStatus.isGranted) {
-      setState(() {
-        _permissionDenied = true;
-        _cameraOff = true;
-      });
       return;
     }
 
-    try {
-      _cameras = await availableCameras();
-    } catch (_) {
-      _cameras = [];
-    }
+    final cam = await Permission.camera.request();
+    final mic = await Permission.microphone.request();
     if (!mounted) return;
-
-    if (_cameras.isEmpty) {
-      setState(() {
-        _cameraFailed = true;
-        _cameraOff = true;
-      });
+    if (!cam.isGranted) _permissionDenied = true;
+    if (!mic.isGranted && !cam.isGranted) {
+      setState(() => _mediaReady = true);
       return;
     }
-
-    final front = _cameras.indexWhere(
-      (c) => c.lensDirection == CameraLensDirection.front,
-    );
-    _cameraIndex = front == -1 ? 0 : front;
-    await _startCamera();
+    await _svc.initLocalMedia(video: cam.isGranted);
+    if (mounted) setState(() => _mediaReady = true);
   }
 
-  Future<void> _startCamera() async {
-    if (_cameraBusy || _cameras.isEmpty) return;
-    _cameraBusy = true;
-
-    final old = _camera;
-    if (mounted) setState(() => _camera = null);
-    try {
-      await old?.dispose();
-    } catch (_) {}
-
-    final controller = CameraController(
-      _cameras[_cameraIndex],
-      ResolutionPreset.high,
-      enableAudio: false,
-    );
-
-    try {
-      await controller.initialize();
-      if (!mounted || _cameraOff || _phase == _Phase.leaving) {
-        await controller.dispose();
-      } else {
-        setState(() => _camera = controller);
-      }
-    } catch (_) {
-      try {
-        await controller.dispose();
-      } catch (_) {}
-      if (mounted) setState(() => _cameraFailed = true);
-    } finally {
-      _cameraBusy = false;
+  void _onService() {
+    if (!mounted) return;
+    final msg = _svc.message;
+    switch (_svc.phase) {
+      case MeetingPhase.waitingRoom:
+        if (_phase == _Phase.joining) _phase = _Phase.waiting;
+        break;
+      case MeetingPhase.inCall:
+        if (_phase == _Phase.joining || _phase == _Phase.waiting) {
+          _phase = _Phase.inCall;
+          _joinedAt = DateTime.now();
+          _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+            _seconds.value++;
+          });
+          _scheduleHideControls();
+        }
+        break;
+      case MeetingPhase.failed:
+        if (_phase == _Phase.joining || _phase == _Phase.waiting) {
+          _phase = _Phase.lobby;
+          if (msg != null) _snack(msg);
+        }
+        break;
+      case MeetingPhase.rejected:
+      case MeetingPhase.ended:
+        if (_phase != _Phase.leaving) {
+          if (msg != null) _snack(msg);
+          _exit(skipServer: true);
+        }
+        break;
+      default:
+        break;
     }
-  }
-
-  Future<void> _stopCamera() async {
-    final c = _camera;
-    if (c == null) return;
-    if (mounted) {
-      setState(() => _camera = null);
-    } else {
-      _camera = null;
-    }
-    try {
-      await c.dispose();
-    } catch (_) {}
+    setState(() {});
   }
 
   Future<void> _toggleCamera() async {
-    if (_cameraBusy) return;
-    if (_permissionDenied) {
+    if (_permissionDenied || !_svc.hasLocalVideo) {
       _snack(
         'Camera permission is turned off',
         action: SnackBarAction(label: 'Settings', onPressed: openAppSettings),
       );
       return;
     }
-    if (_cameras.isEmpty) {
-      _snack('No camera available on this device');
-      return;
-    }
-
     HapticFeedback.selectionClick();
-    if (_cameraOff) {
-      setState(() {
-        _cameraOff = false;
-        _cameraFailed = false;
-      });
-      await _startCamera();
-    } else {
-      setState(() => _cameraOff = true);
-      await _stopCamera(); 
-    }
+    _svc.toggleCamera();
     _showControls();
   }
 
   Future<void> _switchCamera() async {
-    if (_cameras.length < 2 || _cameraBusy || _cameraOff) return;
-    final current = _cameras[_cameraIndex].lensDirection;
-    final target = current == CameraLensDirection.front
-        ? CameraLensDirection.back
-        : CameraLensDirection.front;
-    final idx = _cameras.indexWhere((c) => c.lensDirection == target);
-    if (idx == -1) return;
-
+    if (!_svc.hasLocalVideo || _svc.isVideoOff) return;
     HapticFeedback.selectionClick();
-    _cameraIndex = idx;
-    await _startCamera();
+    await _svc.switchCamera();
     _showControls();
   }
 
   void _joinMeeting() {
-    if (_phase != _Phase.lobby) return;
+    if (_phase != _Phase.lobby || _lobbyError != null || !_mediaReady) return;
     HapticFeedback.mediumImpact();
     setState(() => _phase = _Phase.joining);
-
-    _joinTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (!mounted || _phase != _Phase.joining) return;
-      setState(() {
-        _phase = _Phase.inCall;
-        _joinedAt = DateTime.now();
-      });
-      _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        _seconds.value++;
-      });
-      _scheduleHideControls();
-    });
+    _svc.join();
   }
 
   Future<void> _requestLeave() async {
     if (_phase == _Phase.leaving || _dialogOpen) return;
-    if (_phase == _Phase.lobby || _phase == _Phase.joining) {
+    if (_phase != _Phase.inCall) {
       await _exit();
       return;
     }
@@ -246,22 +195,32 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
     setState(() => _controlsVisible = true);
     _dialogOpen = true;
 
-    final leave = await showDialog<bool>(
+    final choice = await showDialog<_LeaveChoice>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Leave meeting?'),
-        content: const Text('You can rejoin anytime with the same code.'),
+        content: Text(_svc.isHost
+            ? 'You can leave and let others continue, or end the meeting for everyone.'
+            : 'You can rejoin anytime with the same code.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
+            onPressed: () => Navigator.of(ctx).pop(_LeaveChoice.stay),
             child: const Text('Stay'),
           ),
+          if (_svc.isHost)
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () => Navigator.of(ctx).pop(_LeaveChoice.endForAll),
+              child: const Text('End for all', style: TextStyle(color: Colors.white)),
+            ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Leave', style: TextStyle(color: Colors.white),),
+            style: FilledButton.styleFrom(
+              backgroundColor: _svc.isHost ? AppColors.primary : Colors.redAccent,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(_LeaveChoice.leave),
+            child: const Text('Leave', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -270,17 +229,19 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
     _dialogOpen = false;
     if (!mounted) return;
 
-    if (leave == true) {
-      await _exit();
-    } else {
-      _showControls();
+    switch (choice) {
+      case _LeaveChoice.leave:
+        await _exit();
+      case _LeaveChoice.endForAll:
+        await _exit(endForAll: true);
+      default:
+        _showControls();
     }
   }
 
-  Future<void> _exit() async {
+  Future<void> _exit({bool endForAll = false, bool skipServer = false}) async {
     if (_phase == _Phase.leaving) return;
 
-    _joinTimer?.cancel();
     _callTimer?.cancel();
     _hideTimer?.cancel();
 
@@ -295,7 +256,14 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
     HapticFeedback.mediumImpact();
     setState(() => _phase = _Phase.leaving);
 
-    await _stopCamera();
+    if (!skipServer) {
+      await _svc.leave(endForAll: endForAll);
+      if (endForAll) {
+        try {
+          await _api.endMeeting(widget.meetingCode);
+        } catch (_) {}
+      }
+    }
     if (!mounted) return;
     Navigator.of(context).pop(result);
   }
@@ -326,6 +294,7 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
   }
 
   void _snack(String message, {SnackBarAction? action}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message), action: action));
@@ -342,7 +311,7 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
 
   void _toggleMic() {
     HapticFeedback.selectionClick();
-    setState(() => _micMuted = !_micMuted);
+    _svc.toggleMic();
     _showControls();
   }
 
@@ -370,21 +339,40 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (final e in emojis)
-                InkWell(
-                  borderRadius: BorderRadius.circular(24),
-                  onTap: () {
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  for (final e in emojis)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        _sendReaction(e);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(e, style: const TextStyle(fontSize: 30)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
                     Navigator.of(ctx).pop();
-                    _sendReaction(e);
+                    _toggleHand();
                   },
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text(e, style: const TextStyle(fontSize: 30)),
-                  ),
+                  icon: Icon(_handRaised
+                      ? Icons.back_hand_rounded
+                      : Icons.back_hand_outlined),
+                  label: Text(_handRaised ? 'Lower hand' : 'Raise hand'),
                 ),
+              ),
             ],
           ),
         ),
@@ -393,7 +381,8 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
     _showControls();
   }
 
-  Future<void> _showParticipants() async {
+  Future<void> _showMoreMenu() async {
+    _hideTimer?.cancel();
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -402,52 +391,75 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
       ),
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Participants (${_remote.length + 1})',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(height: 12),
-              _participantTile('You', muted: _micMuted, subtitle: 'Host'),
-              for (final p in _remote) _participantTile(p.name, muted: p.muted),
-              if (_remote.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    'No one else has joined yet.',
-                    style: TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
+              ListTile(
+                leading: Icon(
+                  _svc.isScreenSharing
+                      ? Icons.stop_screen_share_rounded
+                      : Icons.screen_share_rounded,
+                  color: _svc.isScreenSharing ? Colors.redAccent : Colors.white,
                 ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _copyLink,
-                      icon: const Icon(Icons.link_rounded, size: 18),
-                      label: const Text('Copy link'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                      ),
-                      onPressed: _shareLink,
-                      icon: const Icon(Icons.ios_share_rounded, size: 18),
-                      label: const Text('Invite'),
-                    ),
-                  ),
-                ],
+                title: Text(
+                  _svc.isScreenSharing ? 'Stop sharing screen' : 'Share screen',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _toggleScreenShare();
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  _handRaised ? Icons.back_hand_rounded : Icons.back_hand_outlined,
+                  color: _handRaised ? AppColors.primary : Colors.white,
+                ),
+                title: Text(
+                  _handRaised ? 'Lower hand' : 'Raise hand',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _toggleHand();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.emoji_emotions_outlined, color: Colors.white),
+                title: const Text('Reactions', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _showReactionPicker();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.people_alt_rounded, color: Colors.white),
+                title: Text(
+                  'People (${_remote.length + 1})',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _showParticipants();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.ios_share_rounded, color: Colors.white),
+                title: const Text('Share invite link', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _shareLink();
+                },
               ),
             ],
           ),
@@ -457,13 +469,160 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
     _showControls();
   }
 
-  Widget _participantTile(String name, {bool muted = false, String? subtitle}) {
+  Future<void> _toggleScreenShare() async {
+    HapticFeedback.selectionClick();
+    if (_svc.isScreenSharing) {
+      await _svc.stopScreenShare();
+    } else {
+      final err = await _svc.startScreenShare();
+      if (err != null) _snack(err);
+    }
+    _showControls();
+  }
+
+  Future<void> _showChat() async {
+    _hideTimer?.cancel();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _ChatBottomSheet(
+        svc: _svc,
+        onSnack: _snack,
+      ),
+    );
+    _showControls();
+  }
+
+  Future<void> _showParticipants() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => ListenableBuilder(
+        listenable: _svc,
+        builder: (ctx, _) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_svc.isHost && _svc.waitingList.isNotEmpty) ...[
+                  Text(
+                    'Waiting to join (${_svc.waitingList.length})',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final g in _svc.waitingList)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.25),
+                        child: Text(_initial(g.name),
+                            style: const TextStyle(color: Colors.white)),
+                      ),
+                      title: Text(g.name, style: const TextStyle(color: Colors.white)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.redAccent),
+                            onPressed: () => _svc.reject(g.userId),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.check_rounded, color: Colors.greenAccent),
+                            onPressed: () => _svc.admit(g.userId),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const Divider(color: AppColors.surfaceBorder),
+                ],
+                Text(
+                  'Participants (${_remote.length + 1})',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _participantTile('You', muted: _micMuted, subtitle: _svc.isHost ? 'Host' : null),
+                for (final p in _remote)
+                  _participantTile(
+                    p.name,
+                    muted: p.isMuted,
+                    onMute: _svc.isHost && !p.isMuted ? () => _svc.muteParticipant(p.userId) : null,
+                  ),
+                if (_remote.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Text(
+                      'No one else has joined yet.',
+                      style: TextStyle(color: Colors.white54, fontSize: 13),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _copyLink,
+                        icon: const Icon(Icons.link_rounded, size: 18),
+                        label: const Text('Copy link'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.5),
+                          disabledForegroundColor: Colors.white,
+                        ),
+                        onPressed: _shareLink,
+                        icon: const Icon(Icons.ios_share_rounded, size: 18, color: Colors.white),
+                        label: const Text(
+                          'Invite',
+                          style: TextStyle(
+                            inherit: false,
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    _showControls();
+  }
+
+  Widget _participantTile(String name, {bool muted = false, String? subtitle, VoidCallback? onMute}) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(
         backgroundColor: AppColors.primary.withValues(alpha: 0.25),
         child: Text(
-          name.characters.first.toUpperCase(),
+          _initial(name),
           style: const TextStyle(color: Colors.white),
         ),
       ),
@@ -471,10 +630,13 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
       subtitle: subtitle == null
           ? null
           : Text(subtitle, style: const TextStyle(color: Colors.white54)),
-      trailing: Icon(
-        muted ? Icons.mic_off_rounded : Icons.mic_rounded,
-        color: muted ? Colors.redAccent : Colors.white54,
-        size: 20,
+      trailing: IconButton(
+        onPressed: onMute,
+        icon: Icon(
+          muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+          color: muted ? Colors.redAccent : Colors.white54,
+          size: 20,
+        ),
       ),
     );
   }
@@ -511,33 +673,19 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
   }
 
   Widget _selfView() {
-    final c = _camera;
-    if (!_cameraOff && c != null && c.value.isInitialized) {
-      final size = c.value.previewSize;
-      if (size == null) return CameraPreview(c);
-
-      final portrait = MediaQuery.of(context).orientation == Orientation.portrait;
-      return SizedBox.expand(
-        child: ClipRect(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: portrait ? size.height : size.width,
-              height: portrait ? size.width : size.height,
-              child: CameraPreview(c),
-            ),
-          ),
-        ),
+    if (_svc.isScreenSharing || !_cameraOff) {
+      return RTCVideoView(
+        _svc.localRenderer,
+        mirror: _svc.isFrontCamera && !_svc.isScreenSharing,
+        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
       );
     }
 
     final message = _permissionDenied
         ? 'Camera permission denied'
-        : _cameraFailed
+        : !_svc.hasLocalVideo
             ? 'Camera unavailable'
-            : _cameraOff
-                ? 'Camera is off'
-                : 'Starting camera...';
+            : 'Camera is off';
 
     return Container(
       decoration: const BoxDecoration(
@@ -554,11 +702,10 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
             CircleAvatar(
               radius: 40,
               backgroundColor: AppColors.primary.withValues(alpha: 0.25),
-              child: const Icon(Icons.person_rounded,
-                  size: 46, color: Colors.white),
+              child: const Icon(Icons.person_rounded, size: 46, color: Colors.white),
             ),
             const SizedBox(height: 12),
-            Text(message, style: const TextStyle(color: Colors.white54, fontSize: 13),),
+            Text(message, style: const TextStyle(color: Colors.white54, fontSize: 13)),
           ],
         ),
       ),
@@ -582,7 +729,7 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
             ),
             const Text(
               'Ready to join?',
-              style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold,),
+              style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 6),
             Text(
@@ -612,8 +759,7 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
                                     ? Icons.mic_off_rounded
                                     : Icons.mic_rounded,
                                 isActive: _micMuted,
-                                onPressed: () =>
-                                    setState(() => _micMuted = !_micMuted),
+                                onPressed: _svc.toggleMic,
                               ),
                               const SizedBox(width: 16),
                               CallActionButton(
@@ -621,7 +767,7 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
                                 isActive: _cameraOff,
                                 onPressed: _toggleCamera,
                               ),
-                              if (_cameras.length > 1) ...[
+                              if (_svc.hasLocalVideo) ...[
                                 const SizedBox(width: 16),
                                 CallActionButton(
                                   icon: Icons.cameraswitch_rounded,
@@ -638,6 +784,15 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
               ),
             ),
             const SizedBox(height: 14),
+            if (_lobbyError != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  _lobbyError!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                ),
+              ),
             if (_permissionDenied)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -699,10 +854,16 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                onPressed: _joinMeeting,
-                child: const Text(
-                  'Join now',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                onPressed: (_checkingMeeting || !_mediaReady || _lobbyError != null)
+                    ? null
+                    : _joinMeeting,
+                child: Text(
+                  _checkingMeeting
+                      ? 'Checking meeting…'
+                      : !_mediaReady
+                          ? 'Preparing camera & mic…'
+                          : (widget.isHostHint ? 'Start now' : 'Join now'),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ),
             ),
@@ -738,7 +899,7 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
   Widget _buildCall() {
     final pad = MediaQuery.of(context).padding;
     final size = MediaQuery.of(context).size;
-    final joining = _phase == _Phase.joining;
+    final joining = _phase == _Phase.joining || _phase == _Phase.waiting;
     final inCall = _phase == _Phase.inCall;
     final alone = _remote.isEmpty;
 
@@ -779,7 +940,7 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
           ),
         ),
 
-        if (!alone && inCall)
+        if (_remote.length == 1 && inCall)
           Positioned.fill(
             child: DraggablePipView(
               topInset: pad.top + 72,
@@ -864,13 +1025,13 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
                   IconButton(
                     style: IconButton.styleFrom(backgroundColor: Colors.black45),
                     icon: Icon(
-                      _speakerOn
+                      _svc.speakerOn
                           ? Icons.volume_up_rounded
                           : Icons.volume_off_rounded,
                       color: Colors.white,
                     ),
                     onPressed: () {
-                      setState(() => _speakerOn = !_speakerOn);
+                      _svc.toggleSpeaker();
                       _showControls();
                     },
                   ),
@@ -892,7 +1053,18 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
             right: 16,
             child: Row(
               children: [
-                if (_handRaised) _chip('✋', 'You raised your hand'),
+                if (_svc.isScreenSharing) _chip(null, "You're sharing"),
+                if (_handRaised) ...[
+                  if (_svc.isScreenSharing) const SizedBox(width: 8),
+                  _chip('✋', 'Hand raised'),
+                ],
+                if (_svc.isHost && _svc.waitingList.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _showParticipants,
+                    child: _chip('🔔', '${_svc.waitingList.length} waiting'),
+                  ),
+                ],
                 const Spacer(),
                 if (_micMuted)
                   _chip(null, 'Muted', icon: Icons.mic_off_rounded),
@@ -918,14 +1090,19 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("You're the only one here", style: TextStyle(
+                      const Text(
+                        "You're the only one here",
+                        style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text('Share the link so others can join.', style: TextStyle(color: Colors.white60, fontSize: 12.5),),
+                      const Text(
+                        'Share the link so others can join.',
+                        style: TextStyle(color: Colors.white60, fontSize: 12.5),
+                      ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -941,10 +1118,21 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
                             child: FilledButton.icon(
                               style: FilledButton.styleFrom(
                                 backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.5),
+                                disabledForegroundColor: Colors.white,
                               ),
                               onPressed: _shareLink,
-                              icon: const Icon(Icons.ios_share_rounded, size: 18),
-                              label: const Text('Invite'),
+                              icon: const Icon(Icons.ios_share_rounded, size: 18, color: Colors.white),
+                              label: const Text(
+                                'Invite',
+                                style: TextStyle(
+                                  inherit: false,
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -983,16 +1171,16 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
           ),
 
           Positioned(
-            left: 12,
-            right: 12,
+            left: 20,
+            right: 20,
             bottom: pad.bottom + 12,
             child: _fade(
               visible: _controlsVisible,
               hidden: const Offset(0, 1),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.6),
+                  color: Colors.black.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(32),
                   border: Border.all(color: Colors.white12),
                 ),
@@ -1016,27 +1204,44 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
                       ),
                     ),
                     Expanded(
-                      child: CallActionButton(
-                        icon: Icons.emoji_emotions_outlined,
-                        label: 'React',
-                        onPressed: _showReactionPicker,
+                      child: Stack(
+                        alignment: Alignment.topCenter,
+                        clipBehavior: Clip.none,
+                        children: [
+                          CallActionButton(
+                            icon: Icons.chat_bubble_rounded,
+                            label: 'Chat',
+                            onPressed: _showChat,
+                          ),
+                          if (_svc.unreadChat > 0)
+                            Positioned(
+                              top: -2,
+                              right: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  _svc.unreadChat > 9 ? '9+' : '${_svc.unreadChat}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                     Expanded(
                       child: CallActionButton(
-                        icon: _handRaised
-                            ? Icons.back_hand_rounded
-                            : Icons.back_hand_outlined,
-                        label: 'Hand',
-                        isActive: _handRaised,
-                        onPressed: _toggleHand,
-                      ),
-                    ),
-                    Expanded(
-                      child: CallActionButton(
-                        icon: Icons.people_alt_rounded,
-                        label: 'People',
-                        onPressed: _showParticipants,
+                        icon: Icons.more_vert_rounded,
+                        label: 'More',
+                        isActive: _svc.isScreenSharing || _handRaised,
+                        onPressed: _showMoreMenu,
                       ),
                     ),
                     Expanded(
@@ -1068,9 +1273,16 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
             children: [
               const CircularProgressIndicator(color: Colors.white),
               const SizedBox(height: 18),
-              const Text('Joining meeting...', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600,),),
+              Text(
+                _phase == _Phase.waiting ? 'Waiting for the host to let you in…' : 'Joining meeting...',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 4),
-              Text(widget.meetingCode, style: const TextStyle(color: Colors.white54, fontSize: 13),),
+              Text(
+                widget.meetingCode,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
               const SizedBox(height: 16),
               TextButton(
                 onPressed: _requestLeave,
@@ -1103,42 +1315,314 @@ class _MeetingRoomScreenState extends State<MeetingRoomScreen>
   }
 
   Widget _remoteStage(EdgeInsets pad) {
-    return GridView.count(
-      crossAxisCount: _remote.length == 1 ? 1 : 2,
-      padding: EdgeInsets.fromLTRB(8, pad.top + 8, 8, pad.bottom + 100),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      children: [
-        for (final p in _remote)
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E222A),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Stack(
-              children: [
-                Center(
-                  child: CircleAvatar(
-                    radius: 36,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.3),
-                    child: Text(p.name.characters.first.toUpperCase(), style: const TextStyle(fontSize: 28, color: Colors.white),),
+    if (_remote.length == 1) {
+      return SizedBox.expand(child: _remoteTile(_remote.first, rounded: false));
+    }
+
+    final tiles = <Widget>[
+      for (final p in _remote) _remoteTile(p, rounded: true),
+      _selfTile(),
+    ];
+    final n = tiles.length;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final landscape = constraints.maxWidth > constraints.maxHeight;
+
+        final int cols;
+        if (landscape) {
+          cols = n <= 1 ? 1 : n <= 2 ? 2 : n <= 6 ? 3 : 4;
+        } else {
+          cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4;
+        }
+
+        final rows = <List<Widget>>[
+          for (var i = 0; i < n; i += cols)
+            tiles.sublist(i, (i + cols) > n ? n : i + cols),
+        ];
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(4, pad.top + 60, 4, pad.bottom + 100),
+          child: Column(
+            children: [
+              for (final row in rows)
+                Expanded(
+                  child: Row(
+                    children: [
+                      for (final t in row)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: t,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                Positioned(
-                  left: 12,
-                  bottom: 10,
-                  child: Text(p.name, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                ),
-                if (p.muted)
-                  const Positioned(
-                    right: 12,
-                    bottom: 10,
-                    child: Icon(Icons.mic_off_rounded, color: Colors.redAccent, size: 18),
-                  ),
-              ],
-            ),
+            ],
           ),
-      ],
+        );
+      },
+    );
+  }
+
+  Widget _remoteTile(RemotePeer p, {required bool rounded}) {
+    final content = Container(
+      color: const Color(0xFF1E222A),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (p.hasVideo && !p.isVideoOff)
+            RTCVideoView(
+              p.renderer,
+              objectFit: p.fitContain
+                  ? RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
+                  : RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+            )
+          else
+            Center(
+              child: CircleAvatar(
+                radius: rounded ? 32 : 48,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.3),
+                child: Text(
+                  _initial(p.name),
+                  style: TextStyle(fontSize: rounded ? 24 : 36, color: Colors.white),
+                ),
+              ),
+            ),
+          Positioned(
+            left: 12,
+            bottom: rounded ? 10 : 130,
+            child: Text(p.name,
+                style: const TextStyle(color: Colors.white, fontSize: 13)),
+          ),
+          if (p.isMuted)
+            Positioned(
+              right: 12,
+              bottom: rounded ? 10 : 130,
+              child: const Icon(Icons.mic_off_rounded,
+                  color: Colors.redAccent, size: 18),
+            ),
+        ],
+      ),
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleControls,
+      onDoubleTap: () {
+        p.fitContain = !p.fitContain;
+        setState(() {});
+      },
+      child: rounded
+          ? ClipRRect(borderRadius: BorderRadius.circular(16), child: content)
+          : content,
+    );
+  }
+
+  Widget _selfTile() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleControls,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _selfView(),
+            const Positioned(
+              left: 12,
+              bottom: 10,
+              child: Text('You',
+                  style: TextStyle(color: Colors.white, fontSize: 13)),
+            ),
+            if (_micMuted)
+              const Positioned(
+                right: 12,
+                bottom: 10,
+                child: Icon(Icons.mic_off_rounded,
+                    color: Colors.redAccent, size: 18),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatBottomSheet extends StatefulWidget {
+  final MeetingService svc;
+  final Function(String, {SnackBarAction? action}) onSnack;
+
+  const _ChatBottomSheet({
+    required this.svc,
+    required this.onSnack,
+  });
+
+  @override
+  State<_ChatBottomSheet> createState() => _ChatBottomSheetState();
+}
+
+class _ChatBottomSheetState extends State<_ChatBottomSheet> {
+  late final TextEditingController _input;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _input = TextEditingController();
+    widget.svc.setChatOpen(true);
+  }
+
+  @override
+  void dispose() {
+    _input.dispose();
+    final svc = widget.svc;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      svc.setChatOpen(false);
+    });
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _input.text.trim();
+    if (text.isEmpty || _sending) return;
+    if (!mounted) return;
+    setState(() => _sending = true);
+    _input.clear();
+    final err = await widget.svc.sendMessage(text);
+    if (!mounted) return;
+    if (err != null) {
+      _input.text = text;
+      widget.onSnack(err);
+    }
+    setState(() => _sending = false);
+  }
+
+  Widget _chatBubble(BuildContext ctx, MeetingChatMessage m) {
+    final mine = m.senderId == widget.svc.userId;
+    final t = DateTime.tryParse(m.timestamp)?.toLocal();
+    final time = t == null
+        ? ''
+        : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(ctx).width * 0.75),
+        decoration: BoxDecoration(
+          color: mine ? AppColors.primary : Colors.white10,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!mine)
+              Text(
+                m.senderName,
+                style: const TextStyle(
+                  color: AppColors.primaryLight,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            Text(m.content, style: const TextStyle(color: Colors.white, fontSize: 14)),
+            const SizedBox(height: 2),
+            Text(time, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final sheetHeight = MediaQuery.sizeOf(context).height * 0.65;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: SafeArea(
+        child: SizedBox(
+          height: sheetHeight,
+          child: Column(
+            children: [
+              const SizedBox(height: 16),
+              const Text(
+                'In-call chat',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: widget.svc,
+                  builder: (ctx, _) {
+                    final msgs = widget.svc.chat.reversed.toList();
+                    if (msgs.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'No messages yet. Say hi 👋',
+                          style: TextStyle(color: Colors.white38),
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: msgs.length,
+                      itemBuilder: (ctx, i) => _chatBubble(ctx, msgs[i]),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _input,
+                        style: const TextStyle(color: Colors.white),
+                        textInputAction: TextInputAction.send,
+                        maxLength: 500,
+                        onSubmitted: (_) => _send(),
+                        decoration: InputDecoration(
+                          counterText: '',
+                          hintText: 'Message everyone',
+                          hintStyle: const TextStyle(color: Colors.white30),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                      ),
+                      onPressed: _send,
+                      icon: const Icon(Icons.send_rounded, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
