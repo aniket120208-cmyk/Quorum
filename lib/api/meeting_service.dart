@@ -27,6 +27,8 @@ class RemotePeer {
   bool hasVideo = false;
   bool fitContain = false;
   MediaStream? audioStream;
+  final List<MediaStream> audioStreams = [];
+  final List<MediaStreamTrack> audioTracks = [];
   final RTCVideoRenderer renderer = RTCVideoRenderer();
   late final Future<void> ready = renderer.initialize();
 }
@@ -69,6 +71,7 @@ class MeetingService extends ChangeNotifier {
   Future<void>? _mediaInit;
 
   static const _ackTimeout = Duration(seconds: 15);
+  static const double _remoteVolume = 10.0;
   static const Map<String, dynamic> _rtcConfig = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
@@ -114,6 +117,7 @@ class MeetingService extends ChangeNotifier {
   final Set<String> _subscribed = {};
   bool _mediaStarted = false;
   bool _disposed = false;
+  bool _audioConfigured = false;
 
   Future<void> initLocalMedia({bool video = true}) {
     return _mediaInit ??= _initLocalMedia(video: video);
@@ -125,7 +129,7 @@ class MeetingService extends ChangeNotifier {
       _localRendererReady = true;
     }
     if (_localStream != null) return;
-
+    await _configureAudio();
     Future<MediaStream> capture(bool withVideo) {
       return navigator.mediaDevices.getUserMedia({
         'audio': true,
@@ -156,7 +160,6 @@ class MeetingService extends ChangeNotifier {
     _notify();
   }
 
-
   void _log(String m) {
     if (kDebugMode) debugPrint('[MEETING][$userName] $m');
   }
@@ -174,6 +177,73 @@ class MeetingService extends ChangeNotifier {
     }
   }
 
+  Future<void> _configureAudio() async {
+    if (_audioConfigured) return;
+    _audioConfigured = true;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await Helper.setAndroidAudioConfiguration(
+            AndroidAudioConfiguration.media);
+      } catch (e) {
+        _log('android audio config failed: $e');
+      }
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        await Helper.setAppleAudioConfiguration(
+          AppleAudioConfiguration(
+            appleAudioCategory: AppleAudioCategory.playAndRecord,
+            appleAudioCategoryOptions: {
+              AppleAudioCategoryOption.defaultToSpeaker,
+              AppleAudioCategoryOption.allowBluetooth,
+              AppleAudioCategoryOption.allowBluetoothA2DP,
+            },
+            appleAudioMode: AppleAudioMode.videoChat,
+          ),
+        );
+      } catch (e) {
+        _log('apple audio config failed: $e');
+      }
+    }
+  }
+
+  Future<void> _routeToSpeaker() async {
+    if (_disposed) return;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (e) {
+        _log('setSpeakerphoneOn failed: $e');
+      }
+    }
+  }
+
+  void _routeToSpeakerBurst() {
+    _routeToSpeaker();
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    for (final ms in const [400, 1200, 3000]) {
+      Future.delayed(Duration(milliseconds: ms), () {
+        if (_disposed || phase != MeetingPhase.inCall) return;
+        _routeToSpeaker();
+      });
+    }
+  }
+
+  Future<void> _applyTrackAudio(MediaStreamTrack track) async {
+    try {
+      track.enabled = speakerOn;
+    } catch (_) {}
+    try {
+      await Helper.setVolume(speakerOn ? _remoteVolume : 0.0, track);
+    } catch (_) {}
+  }
+
+  Future<void> _applyRemoteAudioState() async {
+    for (final peer in _peers.values) {
+      for (final track in peer.audioTracks) {
+        await _applyTrackAudio(track);
+      }
+    }
+  }
 
   Future<void> join() async {
     if (phase == MeetingPhase.connecting ||
@@ -257,10 +327,8 @@ class MeetingService extends ChangeNotifier {
   Future<void> _enterCall() async {
     if (phase == MeetingPhase.inCall) return;
     _setPhase(MeetingPhase.inCall);
-    try {
-      await Helper.setSpeakerphoneOn(true);
-      speakerOn = true;
-    } catch (_) {}
+    speakerOn = true;
+    await _configureAudio();
     if (isMuted) {
       _socket?.emit('meeting:toggle-mic',
           {'meetingCode': meetingCode, 'isMuted': true});
@@ -270,8 +338,8 @@ class MeetingService extends ChangeNotifier {
           {'meetingCode': meetingCode, 'isVideoOff': true});
     }
     await _startPublishing();
+    _routeToSpeakerBurst();
   }
-
 
   void _registerListeners(io.Socket s) {
     s.on('meeting:joined', (d) {
@@ -444,7 +512,6 @@ class MeetingService extends ChangeNotifier {
     });
   }
 
-
   Future<void> _startPublishing() async {
     if (_mediaStarted) return;
     _mediaStarted = true;
@@ -453,6 +520,12 @@ class MeetingService extends ChangeNotifier {
 
     final pc = await createPeerConnection(_rtcConfig);
     _publisher = pc;
+
+    pc.onConnectionState = (state) {
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _routeToSpeakerBurst();
+      }
+    };
 
     final stream = _localStream;
     if (stream != null) {
@@ -490,7 +563,6 @@ class MeetingService extends ChangeNotifier {
     });
   }
 
-
   void _subscribeFromMap(Map<String, dynamic> m) {
     final peerId = '${m['peerId']}';
     if (peerId == userId) return;
@@ -512,6 +584,12 @@ class MeetingService extends ChangeNotifier {
     _consumers[trackId] = pc;
     _consumerRemoteSet[trackId] = false;
 
+    pc.onConnectionState = (state) {
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _routeToSpeakerBurst();
+      }
+    };
+
     await pc.addTransceiver(
       kind: kind == 'audio'
           ? RTCRtpMediaType.RTCRtpMediaTypeAudio
@@ -527,8 +605,11 @@ class MeetingService extends ChangeNotifier {
         await stream.addTrack(e.track);
       }
       if (e.track.kind != 'video') {
-        e.track.enabled = true;
         peer.audioStream = stream;
+        peer.audioStreams.add(stream);
+        peer.audioTracks.add(e.track);
+        await _applyTrackAudio(e.track);
+        _routeToSpeakerBurst();
         _notify();
         return;
       }
@@ -558,7 +639,6 @@ class MeetingService extends ChangeNotifier {
     });
   }
 
-
   void toggleMic() {
     if (!hasLocalAudio) return;
     isMuted = !isMuted;
@@ -587,9 +667,9 @@ class MeetingService extends ChangeNotifier {
 
   Future<void> toggleSpeaker() async {
     speakerOn = !speakerOn;
-    try {
-      await Helper.setSpeakerphoneOn(speakerOn);
-    } catch (_) {}
+    _notify();
+    await _routeToSpeaker();
+    await _applyRemoteAudioState();
     _notify();
   }
 
@@ -728,7 +808,6 @@ class MeetingService extends ChangeNotifier {
     await _teardown();
   }
 
-
   void _readParticipants(dynamic raw) {
     if (raw is! List) return;
     final seen = <String>{};
@@ -770,6 +849,9 @@ class MeetingService extends ChangeNotifier {
   void _removePeer(String id) {
     final peer = _peers.remove(id);
     if (peer != null) {
+      peer.audioTracks.clear();
+      peer.audioStreams.clear();
+      peer.audioStream = null;
       peer.renderer.srcObject = null;
       peer.renderer.dispose();
     }
@@ -842,6 +924,8 @@ class MeetingService extends ChangeNotifier {
     localRenderer.srcObject = null;
     localRenderer.dispose();
     for (final p in _peers.values) {
+      p.audioTracks.clear();
+      p.audioStreams.clear();
       p.renderer.srcObject = null;
       p.renderer.dispose();
     }
